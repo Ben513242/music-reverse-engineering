@@ -10,6 +10,7 @@ from mrep.adapters.base import RenderAdapter, RenderResult
 from mrep.adapters.registry import register
 from mrep.domain.events import FXEvent
 from mrep.utils import synthetic as syn
+from mrep.utils.music import midi_to_hz
 
 PRESETS: dict[str, dict[str, Any]] = {
     "bass": {"harmonics": ((1, 1.0), (2, 0.4), (3, 0.15)), "adsr": (0.005, 0.05, 0.9, 0.08), "gain": 0.8},
@@ -42,6 +43,41 @@ def _preset_for(track: Any) -> dict[str, Any]:
     if fam in ("piano", "electric_piano", "guitar", "harp"):
         return PRESETS["piano"]
     return PRESETS["default"]
+
+
+def render_note(midi: int, duration: float, sr: int, *, harmonics, adsr: tuple[float, float, float, float], amp: float, pitch_bend: list | None = None, vibrato: dict | None = None, articulation: str = "normal") -> np.ndarray:
+    """Additive tone with a time-varying frequency (pitch-bend curve + vibrato) and
+    articulation-dependent envelope. ``pitch_bend`` is [[t_rel, semitones], ...]."""
+    a, d, s_level, r = adsr
+    if articulation == "staccato":
+        duration, r = max(0.05, duration * 0.8), min(r, 0.03)
+    elif articulation == "legato":
+        duration, r = duration + 0.02, min(r, 0.08)
+    n = int((duration + r) * sr)
+    if n <= 0:
+        return np.zeros(0, dtype=np.float32)
+    t = np.arange(n) / sr
+    semis = np.zeros(n)
+    if pitch_bend:
+        pts = np.asarray(pitch_bend, dtype=np.float64)
+        if pts.ndim == 2 and len(pts):
+            semis += np.interp(t, pts[:, 0], pts[:, 1], left=pts[0, 1], right=pts[-1, 1])
+    if vibrato and vibrato.get("rate_hz") and vibrato.get("depth_cents"):
+        onset_delay = 0.15
+        ramp = np.clip((t - onset_delay) / 0.2, 0.0, 1.0)
+        semis += ramp * (float(vibrato["depth_cents"]) / 200.0) * np.sin(2 * np.pi * float(vibrato["rate_hz"]) * t)
+    f = midi_to_hz(midi) * 2.0 ** (semis / 12.0)
+    phase = 2 * np.pi * np.cumsum(f) / sr
+    y = np.zeros(n)
+    f0 = midi_to_hz(midi)
+    for h, w in harmonics:
+        if h * f0 < sr / 2:
+            y += w * np.sin(h * phase)
+    y *= syn.adsr(n, sr, a, d, s_level, r)
+    peak = float(np.max(np.abs(y))) if n else 0.0
+    if peak > 0:
+        y /= peak
+    return (amp * y).astype(np.float32)
 
 
 def _drum_sample(cls: str, sr: int, cache: dict[str, np.ndarray]) -> np.ndarray:
@@ -98,8 +134,8 @@ class AdditiveRender(RenderAdapter):
                 pan = float(pans[pi % len(pans)])
                 pi += 1
                 for ev in tr.notes:
-                    dur = max(ev.offset - ev.onset, 0.05) + r
-                    clip = syn.tone(ev.midi_note, dur, sr, amp=preset["gain"], harmonics=preset["harmonics"], attack=a, decay=d, sustain=s, release=r)
+                    dur = max(ev.offset - ev.onset, 0.05)
+                    clip = render_note(ev.midi_note, dur, sr, harmonics=preset["harmonics"], adsr=(a, d, s, r), amp=preset["gain"], pitch_bend=ev.pitch_bend, vibrato=ev.features.get("vibrato"), articulation=str(ev.features.get("articulation", "normal")))
                     syn.place(buf, clip, ev.onset, sr, gain=(ev.velocity / 127.0) ** 1.5, pan=pan)
             outs[tr.name] = buf
             sources[tr.name] = "midi_rendered"

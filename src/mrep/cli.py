@@ -63,6 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
     synth.add_argument("--bars", type=int, default=8)
     synth.add_argument("--sr", type=int, default=44100)
     synth.add_argument("--truth", default=None, help="write ground-truth json here (default: <output>.truth.json)")
+    synth.add_argument("--stems", default=None, help="also write reference stems (drums/bass/other/fx .wav) into this directory")
+    ev = sub.add_parser("evaluate", help="compare a project with ground truth (tempo, beats, key, notes, drums, fx, chords, separation)")
+    ev.add_argument("project", help="project directory (output/<song>)")
+    ev.add_argument("--truth", required=True, help="ground-truth json (e.g. from `mrep synth`)")
+    ev.add_argument("--stems", default=None, help="directory with reference stems for SDR / SI-SDR")
+    ev.add_argument("--json", action="store_true", help="print the full report as JSON")
     sub.add_parser("profiles", help="list configuration profiles")
     ad = sub.add_parser("adapters", help="list registered adapters")
     ad.add_argument("--kind", default=None)
@@ -135,12 +141,29 @@ def cmd_synth(args: argparse.Namespace) -> int:
     from mrep.io.json import write_json
     from mrep.utils.synthetic import demo_song
 
-    audio, truth = demo_song(sr=args.sr, bpm=args.bpm, bars=args.bars)
+    audio, truth, stems = demo_song(sr=args.sr, bpm=args.bpm, bars=args.bars, return_stems=True)
     out = Path(args.output)
     write_audio(out, audio, args.sr)
     truth_path = Path(args.truth) if args.truth else out.with_suffix(out.suffix + ".truth.json")
     write_json(truth_path, truth)
-    print(f"wrote {out} ({truth['duration']:.1f}s) and {truth_path}")
+    msg = f"wrote {out} ({truth['duration']:.1f}s) and {truth_path}"
+    if args.stems:
+        for name, stem in stems.items():
+            write_audio(Path(args.stems) / f"{name}.wav", stem, args.sr)
+        msg += f" + {len(stems)} reference stems in {args.stems}"
+    print(msg)
+    return 0
+
+
+def cmd_evaluate(args: argparse.Namespace) -> int:
+    from mrep.evaluate import format_summary, run_evaluation
+
+    report = run_evaluation(Path(args.project), Path(args.truth), Path(args.stems) if args.stems else None)
+    if args.json:
+        print(json.dumps(report, indent=2, default=str))
+    else:
+        print(format_summary(report))
+        print(f"\nfull report: {report['output']}")
     return 0
 
 
@@ -174,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_info(args)
     if args.command == "synth":
         return cmd_synth(args)
+    if args.command == "evaluate":
+        return cmd_evaluate(args)
     if args.command == "profiles":
         for p in PROFILES:
             print(p)

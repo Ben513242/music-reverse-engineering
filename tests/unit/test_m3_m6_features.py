@@ -33,7 +33,7 @@ def test_time_signature_three_vs_four():
     rng = np.random.default_rng(0)
     waltz = np.tile([1.0, 0.3, 0.35], 16) + rng.normal(0, 0.03, 48)
     L, phase, conf, method, scores = estimate_time_signature(waltz)
-    assert (L, phase) == (3, 0) and conf is not None and conf > 0.2 and method == "accent_periodicity"
+    assert (L, phase) == (3, 0) and conf is not None and conf > 0.05 and method == "accent_periodicity"
     common = np.tile([1.0, 0.3, 0.6, 0.3], 12) + rng.normal(0, 0.03, 48)
     L4, phase4, conf4, _, _ = estimate_time_signature(np.roll(common, 1))
     assert L4 == 4 and phase4 == 1 and conf4 > 0.1

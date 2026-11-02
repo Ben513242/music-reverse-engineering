@@ -17,10 +17,12 @@ Audio → Source Separation → Instrument Recognition → Musical Role Recognit
 | 多標籤樂器 / 音樂角色 / 頻率角色 / 音色分類 | `03_events/labels.json`, `06_analysis/instruments.json` |
 | 鼓組 component 事件（kick / snare / hat …，含 velocity 與 confidence） | `03_events/drums.jsonl` |
 | 音高轉譜（per-stem AMT + full-mix AMT + event fusion） | `03_events/notes.jsonl` |
-| Tempo / beat / downbeat / 拍號（3/4 vs 4/4 偵測）/ 調性與轉調 / 段落 / 動態 / 響度 | `06_analysis/*.json` |
+| Tempo（含變速曲線）/ beat / downbeat / 拍號（3/4、4/4；6/8 於 max_quality 啟用）/ 調性分段（Viterbi）/ 段落 / 動態 / 響度 | `06_analysis/*.json` |
 | Synth / 音色分析（ADSR、spectral、harmonicity、vibrato / tremolo / filter movement）與 patch 近似候選 | `06_analysis/sound_design.json` |
 | Humanization（micro-timing、velocity、legato / staccato、pitch bend、vibrato） | `05_score/humanization.json`, MIDI pitch wheel, MusicXML articulations |
 | 低信心標記與建議（labels / chords / key / fx / notes / drums） | `06_analysis/ambiguities.json` |
+| DAW 匯出（DAW 無關的 session.json + Reaper .rpp：stem 音軌、markers、tempo envelope） | `08_reconstruction/daw/` |
+| 品質評估（tempo / beats / key / notes / drums / FX / chords / separation SDR） | `mrep evaluate` → `06_analysis/evaluation.json` |
 | 和弦（含 7th / sus / dim / aug / add9 / slash chord）與琶音型態 | `06_analysis/chords.json`, `arpeggios.json` |
 | FX（riser / downlifter / impact / noise …）保存為音訊片段 + trigger MIDI | `07_fx/` |
 | MIDI（保留 micro-timing 的 performance 版 + quantized 版）、MusicXML 樂譜 | `04_midi/`, `05_score/` |
@@ -65,6 +67,14 @@ mrep reconstruct output/song    # 重新演奏成 WAV / MP3
 mrep info output/song           # 檢視 manifest / 錯誤 / 警告
 ```
 
+評估：
+
+```bash
+mrep synth demo.wav --bars 8 --stems ref_stems/        # 合成歌曲 + ground truth + 參考 stems
+mrep run demo.wav --profile standard
+mrep evaluate output/demo --truth demo.wav.truth.json --stems ref_stems/
+```
+
 其他：`mrep profiles`、`mrep adapters [--kind separation]`、`mrep models download <kind> <name>`。
 任何設定都可用 `--set` 覆寫，例如 `--set stages.transcription.polyphony=6`。
 
@@ -80,7 +90,7 @@ output/SONG_NAME/
 ├── 05_score/                # *.musicxml Full_Score.musicxml score_events.jsonl（量化後，另存，不覆蓋 raw）
 ├── 06_analysis/             # tempo beat key chords structure dynamics loudness instruments arpeggios
 ├── 07_fx/                   # riser_001.wav … + trigger_map.json (C1 = 24 起)
-├── 08_reconstruction/       # reconstructed.wav / .mp3 + track_renders/ + reconstruction.json（每軌來源）
+├── 08_reconstruction/       # reconstructed.wav / .mp3 + track_renders/ + reconstruction.json（每軌來源）+ daw/（session.json, .rpp）
 └── logs/mrep.log.jsonl
 ```
 

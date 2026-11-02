@@ -40,7 +40,9 @@ def run(ctx: PipelineContext) -> StageResult:
         "time_signature_method": mir.time_signature_method,
         "beats_per_bar": mir.beats_per_bar,
         "time_signature_scores": mir.extra.get("time_signature_scores", {}),
-        "tempo_events": [TempoEvent(time=0.0, bpm=mir.tempo_bpm or 120.0, confidence=mir.tempo_confidence, confidence_method=mir.tempo_method, provenance=prov).to_dict()],
+        "tempo_events": [TempoEvent(time=float(e["time"]), bpm=float(e["bpm"]), confidence=mir.tempo_confidence, confidence_method="beat_interval_median", provenance=prov).to_dict() for e in mir.extra.get("tempo_curve", [])]
+        or [TempoEvent(time=0.0, bpm=mir.tempo_bpm or 120.0, confidence=mir.tempo_confidence, confidence_method=mir.tempo_method, provenance=prov).to_dict()],
+        "tempo_stability": mir.extra.get("tempo_stability"),
         "provenance": prov.to_dict(),
     }
     write_json(out / "tempo.json", tempo)

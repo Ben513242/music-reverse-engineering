@@ -36,15 +36,16 @@ stages:
       min_bpm: 60
       max_bpm: 200
       prior_bpm: 120
+      curve_min_change_bpm: 2.0  # tempo-curve events are emitted when the smoothed tempo moves this much
     beats:
       beats_per_bar: 4           # used when time_signature.mode is not auto (or detection is inconclusive)
     time_signature:
       mode: auto                 # auto | fixed  (fixed uses beats.beats_per_bar)
-      candidates: [3, 4]         # bar lengths considered by the accent-periodicity estimator
+      candidates: [3, 4]         # bar lengths considered; add 6 for 6/8 (needs clear downbeat accents, see max_quality)
     key:
       segment_seconds: 20.0
       hop_seconds: 10.0
-      min_change_confidence: 0.15
+      switch_penalty: 0.25       # Viterbi cost of a key change (relative keys cost 1.5x)
     sections:
       min_section_seconds: 8.0
       kernel_beats: 8
@@ -141,3 +142,5 @@ stages:
     soundfont: null              # path to .sf2 for the fluidsynth adapter
     mp3: auto                    # auto | true | false  (auto = only if ffmpeg is on PATH)
     track_renders: true
+    daw_export:                  # 08_reconstruction/daw/: session.json + Reaper .rpp referencing the stems
+      enabled: true

@@ -2,7 +2,17 @@
 
 ## Unreleased
 
-### Added
+### Added (round 3)
+- Viterbi key segmentation (switch penalty, relative keys cost more) replaces the rule-based key-change logic.
+- 6/8 metre candidate with sub-period penalties; `metre_name()`.
+- Tempo curve (`tempo_events`, `tempo_stability`), per-measure MusicXML tempo marks, Reaper tempo envelope.
+- Humanised rendering: articulation-dependent envelopes, vibrato and pitch-bend curves in the additive renderer.
+- `mrep evaluate` (tempo / beats / downbeats / key / time signature / notes / drums / FX / chords / separation
+  SDR, SI-SDR, leakage) and `mrep synth --stems` reference stems + beat ground truth.
+- DAW export: `08_reconstruction/daw/session.json` and a Reaper `.rpp` with stem tracks, markers and tempo.
+- Tests for `.ogg` / `.m4a` / `.flac` ingestion through ffmpeg and for 48 kHz input.
+
+### Added (round 2)
 - Time-signature estimation (3/4 vs 4/4) from beat accents, with confidence and per-candidate scores.
 - `sound_analysis` adapter kind (`dsp`): ADSR, spectral shape, harmonicity / noise, inharmonicity,
   vibrato / tremolo / filter movement, stereo width -> sound-design descriptors and *approximate*

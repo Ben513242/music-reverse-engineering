@@ -31,6 +31,8 @@ def test_tempo_key_and_time_signature(project, demo_audio_44k):
     assert tempo["time_signature_confidence"] is not None and tempo["time_signature_confidence"] > 0.05
     key = read_json(project / "06_analysis/key.json")
     assert key["global_key"] == truth["key"]
+    assert len(key["key_events"]) == 1  # Viterbi smoothing: no spurious relative-minor segment
+    assert tempo["tempo_events"] and tempo["tempo_stability"] is not None and tempo["tempo_stability"] < 0.1
     beat = read_json(project / "06_analysis/beat.json")
     first_db = beat["downbeats"][0]
     bar = 4 * 60.0 / truth["bpm"]
@@ -99,3 +101,26 @@ def test_outputs_midi_musicxml_reconstruction(project):
     assert human and all(0 <= h["legato_ratio"] <= 1 for h in human.values())
     amb = read_json(project / "06_analysis/ambiguities.json")
     assert isinstance(amb["items"], list)
+
+
+def test_evaluate_against_truth(project, demo_wav_44k, demo_audio_44k):
+    from mrep.evaluate import run_evaluation
+    from mrep.io.audio import write_audio
+    from mrep.io.json import write_json
+    from mrep.utils.synthetic import demo_song
+
+    _, truth, sr = demo_audio_44k
+    _mix, _truth, stems = demo_song(sr=sr, bpm=120.0, bars=8, return_stems=True)
+    stems_dir = project.parent / "ref_stems"
+    for name, stem in stems.items():
+        write_audio(stems_dir / f"{name}.wav", stem, sr)
+    truth_path = project.parent / "truth.json"
+    write_json(truth_path, truth)
+    report = run_evaluation(project, truth_path, stems_dir)
+    s = report["sections"]
+    assert s["tempo"]["within_4_percent"] and s["key"]["correct"] and s["time_signature"]["correct"]
+    assert s["beats"]["f1"] > 0.8 and s["downbeats"]["f1"] > 0.8
+    assert s["drums"]["onset_f1"]["recall"] > 0.6 and s["fx"]["recall"] == 1.0
+    assert s["chords"]["root_accuracy"] > 0.6
+    assert s["separation"]["drums"]["si_sdr_db"] > 0  # HPSS separates the synthetic drums at least somewhat
+    assert (project / "06_analysis/evaluation.json").exists()

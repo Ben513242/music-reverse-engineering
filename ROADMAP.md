@@ -8,7 +8,7 @@
 | **M3 — 電子音樂細分類** | 808 / Sub Bass / Lead / Pad / Arp / Pluck / Chord / Drone；Riser / Downlifter / Impact / Noise / Glitch / Granular | 🟡 taxonomy、label 結構、FX events、琶音偵測、synth 音色分析 + patch 近似候選已有；分類模型待接 |
 | **M4 — 樂譜** | MusicXML、鼓譜、和弦記號、轉調、動態記號、拍號 | ✅ 完成（writer + 量化 + harmony + dynamics + key change + 拍號偵測 + articulation / slur） |
 | **M5 — Two-path AMT** | Per-stem AMT + Full-mix AMT → fusion；多 adapter ensemble consensus | ✅ 機制完成（`full_mix_amt`, `pitched_adapters[]`, `drums_adapters[]`）；`basic_pitch` adapter 骨架已加，待實測 |
-| **M6 — Reconstruction 品質** | Velocity / dynamics / humanization / articulation / instrument mapping / FX / mixing | 🟡 velocity、micro-timing、articulation、pitch bend / vibrato、FX 回填已有；SoundFont adapter 需自備 .sf2；渲染端尚未套用 articulation |
+| **M6 — Reconstruction 品質** | Velocity / dynamics / humanization / articulation / instrument mapping / FX / mixing | 🟡 velocity、micro-timing、articulation、pitch bend / vibrato 已套用到 additive 渲染；FX 回填；DAW export（session.json + Reaper）；SoundFont adapter 需自備 .sf2 |
 
 ## 近期優先（建議順序）
 
@@ -19,9 +19,9 @@
 5. **Beat / downbeat / key 模型**（madmom 類）取代 `dsp` MIR 的對應部分。
 6. Synth sound analysis（ADSR、spectral、modulation）與 **patch approximation（candidate + similarity）**。
 7. Humanization metadata → 渲染（legato / staccato / vibrato / pitch bend）。
-8. Quality metrics 腳本：對合成與公有領域音訊計算 SDR / F1 / tempo error 並出報表。
+8. ~~Quality metrics 腳本~~ → `mrep evaluate` 已完成；下一步是收集公有領域錄音建立 benchmark 集。
 
 ## 長期
 
-DAW project export（Ableton / Reaper / Logic MIDI）、timbre similarity search、互動修正 UI、
+DAW project export 的其他格式（Ableton / Logic；Reaper 已有）、timbre similarity search、互動修正 UI、
 waveform / piano-roll / score editor、自動配器、原曲 vs 重建 A/B 比較。

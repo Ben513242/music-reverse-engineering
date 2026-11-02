@@ -27,19 +27,25 @@
 - [x] 鼓 ensemble（`drums_adapters[]` + consensus）
 - [x] `demucs`（separation）與 `basic_pitch`（transcription）adapter 骨架（lazy import、明確下載、integration tests 自動略過）
 
-## Next
+## Done（第三輪：不需實體機的剩餘項目）
+
+- [x] 調性分段改用 Viterbi（switch penalty，相對大小調加重），消除單視窗翻轉
+- [x] 拍號候選可加入 6/8（adjusted explained variance + sub-period 懲罰）；預設仍為 [3, 4]，`max_quality` 啟用 6，因為 6/8 需要明確的 downbeat 重音才可靠
+- [x] 變速：tempo curve（`tempo_events` 由 beat interval 平滑而來、`tempo_stability`）、MusicXML 每小節 tempo 記號、Reaper tempo envelope
+- [x] Humanization 套用到渲染：articulation 影響 duration / release，vibrato 與 pitch bend 以時變頻率合成
+- [x] `mrep evaluate`：tempo / beats / downbeats / 拍號 / 調性 / notes / drums / FX / chords / separation（SDR、SI-SDR、leakage）→ `06_analysis/evaluation.json`
+- [x] `mrep synth --stems`：合成歌曲輸出參考 stems（與 mix 精確相加）與 beats / downbeats ground truth
+- [x] `.ogg / .m4a / .flac` 輸入測試（ffmpeg 編碼後走 libsndfile 或 ffmpeg fallback）、48 kHz 輸入重採樣測試
+- [x] DAW export：`08_reconstruction/daw/session.json`（DAW 無關的 session 描述）+ Reaper `.rpp`（stem 音軌、markers、tempo envelope）
+
+## Next（需要實體機 / 模型）
 
 - [ ] 在有 GPU / torch 的環境實測 `demucs` 與 `basic_pitch` adapters（本次開發環境無法安裝 torch）
 - [ ] 鼓轉譜模型 adapter（`drum_transcription/`）
 - [ ] 學習型多標籤 classification adapter
 - [ ] Beat / downbeat / key 模型 adapter（`mir/`）
-- [ ] 6/8 等複拍子（目前候選只有 3/4 與 4/4）
-- [ ] Humanization 套用到渲染（articulation 影響 release；vibrato 於 additive render）
-- [ ] Key change 偵測更穩健（目前以 20 s 視窗 KS + 相對大小調規則）
-- [ ] Tempo map 支援變速（目前 MIDI tempo map 依 beat grid，MusicXML 單一 bpm）
-- [ ] Separation quality metrics 腳本（對合成 stems 算 SDR）
-- [ ] `.m4a / .aac / .aiff / .ogg` 輸入測試（目前透過 ffmpeg fallback，未測）
-- [ ] DAW export（Ableton / Reaper / Logic）
+- [ ] Reaper 以外的 DAW 專案格式（Ableton `.als`、Logic）；RPP 內嵌 MIDI items
+- [ ] 以真實（公有領域）錄音驗證 heuristics，調整門檻
 
 ## Known limitations of the baseline adapters
 
@@ -48,4 +54,6 @@
 - `spectral_peaks` 對低音的頻率解析度有限（已用較長 FFT + 動態鄰音抑制緩解），八度錯誤仍可能發生。
 - `energy_heuristic` discovery 只能估 drums / bass / harmonic，其餘家族回 `null`（所以 specialist 需以 `force_specialists` 強制）。
 - `heuristic` FX 偵測只處理 riser / downlifter / white_noise / impact。
-- Baseline adapters 的頻率參數以 44.1 kHz 調校；`audio.target_sample_rate` 設成 22.05 kHz 時品質明顯下降（e2e 以 44.1 kHz 驗證）。
+- Baseline adapters 的頻率參數以 44.1 kHz 調校；輸入會先重採樣到 44.1 kHz（48 kHz 輸入已測），把 `audio.target_sample_rate` 改成 22.05 kHz 會明顯降低品質。
+- 6/8 以「每小節 6 個 tracked beats」判定，假設 beat tracker 追到八分音符層級。
+- Reaper `.rpp` 只放 stem 音軌、markers 與 tempo envelope；MIDI 請從 `04_midi/` 匯入。

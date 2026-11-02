@@ -1,6 +1,9 @@
 # Max-quality profile: high VRAM, more specialists, several AMT adapters, consensus fusion.
 profile: max_quality
 stages:
+  global_analysis:
+    time_signature:
+      candidates: [3, 4, 6]    # 6/8 detection is opt-in: it needs clearly accented downbeats
   separation:
     # broad_adapter: demucs      # needs `pip install torch demucs` + `mrep models download separation demucs`
     specialist_threshold: 0.5
