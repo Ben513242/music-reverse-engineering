@@ -1,0 +1,14 @@
+# Light profile: low VRAM / CPU only, chunked processing, only essential specialists.
+profile: light
+device: cpu
+stages:
+  separation:
+    chunk_seconds: 30
+    specialist_threshold: 0.75
+    specialists:
+      drums: drum_bandsplit
+  transcription:
+    polyphony: 3
+    full_mix_amt: false
+  reconstruction:
+    track_renders: false

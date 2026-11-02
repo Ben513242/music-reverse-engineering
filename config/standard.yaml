@@ -1,0 +1,7 @@
+# Standard profile: a typical CUDA GPU (or a decent CPU).
+# Broad separation + specialist refinement + per-stem AMT + full-mix AMT.
+profile: standard
+stages:
+  transcription:
+    full_mix_amt: true
+    polyphony: 5

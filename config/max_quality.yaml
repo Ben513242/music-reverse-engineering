@@ -1,0 +1,19 @@
+# Max-quality profile: high VRAM, more specialists, several AMT adapters, consensus fusion.
+profile: max_quality
+stages:
+  separation:
+    specialist_threshold: 0.5
+    specialists:
+      drums: drum_bandsplit
+      # Register ML specialists under kind "separation" and list them here, e.g.
+      # piano: demucs_piano
+      # strings: bandit_strings
+  transcription:
+    full_mix_amt: true
+    polyphony: 6
+    min_note_seconds: 0.05
+    pitched_adapters: [spectral_peaks]   # add more adapter names for ensemble consensus
+  fusion:
+    onset_tolerance_seconds: 0.04
+  reconstruction:
+    track_renders: true
