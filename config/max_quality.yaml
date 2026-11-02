@@ -2,6 +2,7 @@
 profile: max_quality
 stages:
   separation:
+    # broad_adapter: demucs      # needs `pip install torch demucs` + `mrep models download separation demucs`
     specialist_threshold: 0.5
     specialists:
       drums: drum_bandsplit
@@ -12,7 +13,8 @@ stages:
     full_mix_amt: true
     polyphony: 6
     min_note_seconds: 0.05
-    pitched_adapters: [spectral_peaks]   # add more adapter names for ensemble consensus
+    pitched_adapters: [spectral_peaks]   # e.g. [spectral_peaks, basic_pitch] once `pip install basic-pitch`
+    drums_adapters: [onset_bands]        # add a learned drum transcriber here for consensus
   fusion:
     onset_tolerance_seconds: 0.04
   reconstruction:

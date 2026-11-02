@@ -17,16 +17,24 @@
 - [x] Tests：unit、contract（pipeline / resume / cache / force / partial / CLI）、e2e（合成歌曲 vs ground truth）、integration placeholder
 - [x] Docs：README、ARCHITECTURE、AGENTS、CLAUDE、ROADMAP、SPEC；CI workflow
 
+## Done（第二輪：M3 / M6 機制）
+
+- [x] 拍號偵測（3/4 vs 4/4，accent periodicity，含 confidence 與分數；可設 `mode: fixed`）
+- [x] `sound_analysis` adapter kind：ADSR / spectral / harmonicity / inharmonicity / vibrato / tremolo / filter movement → `sound_design` 描述 + patch 近似候選（probability + similarity）
+- [x] Pitch bend / vibrato：單音 stem 的 f0 tracking → `NoteEvent.pitch_bend` / `features.vibrato` → MIDI pitch wheel
+- [x] Humanization：articulation（legato / staccato）、timing / velocity 統計 → `humanization.json`；MusicXML staccato / slur
+- [x] 低信心處理：`ambiguities.json` + `SoundLabel.ambiguous`
+- [x] 鼓 ensemble（`drums_adapters[]` + consensus）
+- [x] `demucs`（separation）與 `basic_pitch`（transcription）adapter 骨架（lazy import、明確下載、integration tests 自動略過）
+
 ## Next
 
-- [ ] 神經 AMT adapter（`transcription/`）+ integration test
-- [ ] 神經 separation adapter（`separation/`）作為 `broad_adapter`
+- [ ] 在有 GPU / torch 的環境實測 `demucs` 與 `basic_pitch` adapters（本次開發環境無法安裝 torch）
 - [ ] 鼓轉譜模型 adapter（`drum_transcription/`）
 - [ ] 學習型多標籤 classification adapter
 - [ ] Beat / downbeat / key 模型 adapter（`mir/`）
-- [ ] 拍號偵測（目前 `assumed 4/4`，confidence `null`）
-- [ ] Synth sound analysis（ADSR / spectral / modulation）→ `sound_design` 標籤 + patch approximation candidates
-- [ ] Humanization metadata（legato / staccato / vibrato / pitch bend）進 MIDI 與渲染
+- [ ] 6/8 等複拍子（目前候選只有 3/4 與 4/4）
+- [ ] Humanization 套用到渲染（articulation 影響 release；vibrato 於 additive render）
 - [ ] Key change 偵測更穩健（目前以 20 s 視窗 KS + 相對大小調規則）
 - [ ] Tempo map 支援變速（目前 MIDI tempo map 依 beat grid，MusicXML 單一 bpm）
 - [ ] Separation quality metrics 腳本（對合成 stems 算 SDR）

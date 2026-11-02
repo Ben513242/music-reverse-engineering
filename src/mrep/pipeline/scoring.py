@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from mrep.analysis.humanization import classify_articulations, humanization_stats
 from mrep.analysis.quantize import QuantizeSettings, quantize_drums, quantize_notes
 from mrep.config import load_resource_yaml
 from mrep.domain.events import DrumEvent, NoteEvent
@@ -104,15 +105,21 @@ def run(ctx: PipelineContext) -> StageResult:
     def drum_spec(events: list[DrumEvent]) -> MidiTrackSpec:
         return MidiTrackSpec(name="Drums", is_drum=True, program=None, notes=[MidiNote(tempo_map.beats_at(e.time), tempo_map.beats_at(e.time + (e.duration or 0.1)), drum_midi.get(e.drum_class, other_perc), e.velocity) for e in events])
 
+    pitch_bend_range = float(mcfg.get("pitch_bend_range", 2.0))
+
+    def _midi_note(n: NoteEvent) -> MidiNote:
+        bends = [(tempo_map.beats_at(n.onset + float(t)), float(semis)) for t, semis in (n.pitch_bend or [])]
+        return MidiNote(tempo_map.beats_at(n.onset), tempo_map.beats_at(n.offset), n.midi_note, n.velocity, bends)
+
     specs: list[MidiTrackSpec] = []
     channel = 0
     for stem, ns in by_track.items():
         prog = program_for(labels.get(stem), programs)
-        spec = MidiTrackSpec(name=names[stem], channel=channel, program=prog, notes=[MidiNote(tempo_map.beats_at(n.onset), tempo_map.beats_at(n.offset), n.midi_note, n.velocity) for n in ns])
+        spec = MidiTrackSpec(name=names[stem], channel=channel, program=prog, notes=[_midi_note(n) for n in ns])
         specs.append(spec)
         channel = channel + 1 if channel + 1 != 9 else 10
         channel %= 16
-        write_midi(midi_dir / f"{names[stem]}.mid", build_midi([spec], tempo_map, tpb, (bpb, 4), key_sig, names[stem]))
+        write_midi(midi_dir / f"{names[stem]}.mid", build_midi([spec], tempo_map, tpb, (bpb, 4), key_sig, names[stem], pitch_bend_range))
         result.artifacts[f"midi:{names[stem]}"] = ctx.rel(midi_dir / f"{names[stem]}.mid")
     if drums:
         ds = drum_spec(drums)
@@ -122,12 +129,20 @@ def run(ctx: PipelineContext) -> StageResult:
     if fx_notes:
         specs.append(MidiTrackSpec(name="FX_Triggers", channel=15, program=None, notes=fx_notes))
     full = midi_dir / "FULL_SONG.mid"
-    write_midi(full, build_midi(specs, tempo_map, tpb, (bpb, 4), key_sig, ctx.project.song_name))
+    write_midi(full, build_midi(specs, tempo_map, tpb, (bpb, 4), key_sig, ctx.project.song_name, pitch_bend_range))
     result.artifacts["midi:FULL_SONG"] = ctx.rel(full)
 
-    # ---- quantised score events ---------------------------------------------------------
+    # ---- quantised score events + humanisation metadata ---------------------------------------
     score_notes = quantize_notes(notes, tempo_map, settings)
     score_drums = quantize_drums(drums, tempo_map, settings)
+    raw_by_id = {n.event_id: n for n in notes}
+    hcfg = cfg.get("humanization", {}) or {}
+    human: dict = {}
+    if hcfg.get("enabled", True):
+        classify_articulations(score_notes, raw_by_id, 60.0 / bpm, float(hcfg.get("legato_gap_seconds", 0.02)), float(hcfg.get("staccato_ratio", 0.5)))
+        human = humanization_stats(score_notes, raw_by_id, 60.0 / bpm)
+        write_json(score_dir / "humanization.json", {"tracks": human, "beat_seconds": 60.0 / bpm, "note": "timing offsets are raw - quantised; use them to re-humanise the quantised score"})
+        result.artifacts["humanization"] = ctx.rel(score_dir / "humanization.json")
     write_events(score_dir / "score_events.jsonl", score_notes)
     write_json(score_dir / "score_drums.json", {"events": score_drums})
     result.artifacts["score_events"] = ctx.rel(score_dir / "score_events.jsonl")
@@ -162,8 +177,19 @@ def run(ctx: PipelineContext) -> StageResult:
         parts: list[XmlPart] = []
         pid = 1
         for stem in by_track:
-            sn = [s for s in score_notes if s.track == stem]
-            part = XmlPart(part_id=f"P{pid}", name=names[stem], program=program_for(labels.get(stem), programs), notes=[XmlNote(start=int(round(s.beat_onset * DIVISIONS)), duration=max(2, int(round(s.beat_duration * DIVISIONS))), midi=s.midi_note, velocity=s.velocity) for s in sn])
+            sn = sorted((s for s in score_notes if s.track == stem), key=lambda s: (s.beat_onset, s.midi_note))
+            slurs: dict[str, str] = {}
+            in_run = False
+            for s_ev in sn:
+                if s_ev.articulation == "legato" and not in_run:
+                    slurs[s_ev.event_id] = "start"
+                    in_run = True
+                elif in_run and s_ev.articulation != "legato":
+                    slurs[s_ev.event_id] = "stop"
+                    in_run = False
+            if in_run and sn:
+                slurs.pop(next((k for k, v in slurs.items() if v == "start" and k == sn[-1].event_id), ""), None)
+            part = XmlPart(part_id=f"P{pid}", name=names[stem], program=program_for(labels.get(stem), programs), notes=[XmlNote(start=int(round(s.beat_onset * DIVISIONS)), duration=max(2, int(round(s.beat_duration * DIVISIONS))), midi=s.midi_note, velocity=s.velocity, articulation=s.articulation, slur=slurs.get(s.event_id)) for s in sn])
             parts.append(part)
             pid += 1
             spec = ScoreSpec(title=f"{ctx.project.song_name} - {names[stem]}", beats=bpb, beat_type=4, bpm=bpm, key_changes=key_changes, parts=[part], harmonies=harmonies, dynamics=dynamics)
@@ -177,6 +203,6 @@ def run(ctx: PipelineContext) -> StageResult:
         write_musicxml(score_dir / "Full_Score.musicxml", ScoreSpec(title=ctx.project.song_name, beats=bpb, bpm=bpm, key_changes=key_changes, parts=parts, harmonies=harmonies, dynamics=dynamics))
         result.artifacts["musicxml:Full_Score"] = ctx.rel(score_dir / "Full_Score.musicxml")
     (score_dir / "README.txt").write_text(SCORE_README, encoding="utf-8")
-    result.summary = {"tracks": list(names.values()), "score_notes": len(score_notes), "score_drums": len(score_drums), "fx_triggers": len(trigger_map), "grid": settings.grid, "triplets": settings.triplets, "swing": settings.swing}
+    result.summary = {"tracks": list(names.values()), "score_notes": len(score_notes), "score_drums": len(score_drums), "fx_triggers": len(trigger_map), "grid": settings.grid, "triplets": settings.triplets, "swing": settings.swing, "humanization": {t: {"legato_ratio": h["legato_ratio"], "staccato_ratio": h["staccato_ratio"], "timing_std_ms": h["timing_offset_std_ms"]} for t, h in human.items()}}
     log.info("wrote %d MIDI tracks, %d score notes", len(specs), len(score_notes))
     return result

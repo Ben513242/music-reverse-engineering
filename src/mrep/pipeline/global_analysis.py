@@ -39,6 +39,7 @@ def run(ctx: PipelineContext) -> StageResult:
         "time_signature_confidence": mir.time_signature_confidence,
         "time_signature_method": mir.time_signature_method,
         "beats_per_bar": mir.beats_per_bar,
+        "time_signature_scores": mir.extra.get("time_signature_scores", {}),
         "tempo_events": [TempoEvent(time=0.0, bpm=mir.tempo_bpm or 120.0, confidence=mir.tempo_confidence, confidence_method=mir.tempo_method, provenance=prov).to_dict()],
         "provenance": prov.to_dict(),
     }
@@ -75,7 +76,7 @@ def run(ctx: PipelineContext) -> StageResult:
 
     artifacts = {k: ctx.rel(out / f) for k, f in (("tempo", "tempo.json"), ("beat", "beat.json"), ("key", "key.json"), ("structure", "structure.json"), ("dynamics", "dynamics.json"), ("loudness", "loudness.json"))}
     result.artifacts.update(artifacts)
-    result.summary = {"tempo": mir.tempo_bpm, "beats": len(beats), "key": key_events[0].key if key_events else None, "key_changes": max(0, len(key_events) - 1), "sections": len(sections), "duration": duration}
+    result.summary = {"tempo": mir.tempo_bpm, "beats": len(beats), "time_signature": mir.time_signature, "key": key_events[0].key if key_events else None, "key_changes": max(0, len(key_events) - 1), "sections": len(sections), "duration": duration}
     result.confidence = {"tempo": mir.tempo_confidence, "key": key_events[0].confidence if key_events else None, "time_signature": mir.time_signature_confidence}
     log.info("tempo %.2f bpm, key %s, %d sections", mir.tempo_bpm or 0.0, result.summary["key"], len(sections))
     return result

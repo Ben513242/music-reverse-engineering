@@ -56,6 +56,9 @@ def test_full_pipeline_with_fake_adapters(demo_wav, fake_config, tmp_path):
         "05_score/Full_Score.musicxml",
         "05_score/Drums.musicxml",
         "05_score/score_events.jsonl",
+        "05_score/humanization.json",
+        "06_analysis/sound_design.json",
+        "06_analysis/ambiguities.json",
         "06_analysis/tempo.json",
         "06_analysis/beat.json",
         "06_analysis/key.json",
@@ -85,6 +88,14 @@ def test_full_pipeline_with_fake_adapters(demo_wav, fake_config, tmp_path):
     raw = read_jsonl(root / "03_events/raw/notes__bass__fake.jsonl")
     score = read_jsonl(root / "05_score/score_events.jsonl")
     assert raw[0]["onset"] == 0.0 and score[0]["raw_event_id"]
+    assert all(s["articulation"] in ("normal", "staccato", "legato") for s in score)
+    human = read_json(root / "05_score/humanization.json")["tracks"]
+    assert "bass" in human and human["bass"]["note_count"] > 0
+    sd = read_json(root / "06_analysis/sound_design.json")
+    assert "bass" in sd and sd["bass"]["patch_candidates"][0]["label"] == "digital_pluck" and "drums" not in sd
+    amb = read_json(root / "06_analysis/ambiguities.json")
+    assert "items" in amb and amb["thresholds"]["label"] == 0.5
+    assert read_json(root / "06_analysis/tempo.json")["time_signature_method"] in ("fake_constant", "assumed", "accent_periodicity", "configured")
     # FX kept as clips, mapped to trigger notes, never notated as pitched notes
     trig = read_json(root / "07_fx/trigger_map.json")
     assert trig["triggers"]["24"]["class"] == "riser"

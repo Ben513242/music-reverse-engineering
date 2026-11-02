@@ -53,7 +53,7 @@ def merge_note_runs(runs: list[list[NoteEvent]], onset_tol: float = 0.05, pitch_
         if len(group) == 1:
             n = group[0]
             c = n.confidence
-            out.append(NoteEvent(midi_note=n.midi_note, onset=n.onset, offset=n.offset, velocity=n.velocity, track=n.track, instrument=n.instrument, sources=[n.event_id], confidence=None if c is None else round(c * unmatched_weight, 4), confidence_method=n.confidence_method if c is None else "single_adapter_scaled", provenance=n.provenance))
+            out.append(NoteEvent(midi_note=n.midi_note, onset=n.onset, offset=n.offset, velocity=n.velocity, pitch_bend=n.pitch_bend, features=dict(n.features), track=n.track, instrument=n.instrument, sources=[n.event_id], confidence=None if c is None else round(c * unmatched_weight, 4), confidence_method=n.confidence_method if c is None else "single_adapter_scaled", provenance=n.provenance))
             continue
         w = [max(0.05, (g.confidence if g.confidence is not None else 0.5)) for g in group]
         tot = sum(w)
@@ -62,7 +62,11 @@ def merge_note_runs(runs: list[list[NoteEvent]], onset_tol: float = 0.05, pitch_
         vel = int(round(sum(g.velocity * wi for g, wi in zip(group, w)) / tot))
         conf, method = combine_confidence([g.confidence for g in group])
         lead = max(group, key=lambda g: g.confidence or 0.0)
-        out.append(NoteEvent(midi_note=lead.midi_note, onset=round(onset, 4), offset=round(offset, 4), velocity=vel, track=lead.track, instrument=lead.instrument, sources=[g.event_id for g in group], confidence=conf, confidence_method=method, provenance=lead.provenance))
+        bend = next((g.pitch_bend for g in group if g.pitch_bend), None)
+        feats: dict = {}
+        for g in group:
+            feats.update(g.features)
+        out.append(NoteEvent(midi_note=lead.midi_note, onset=round(onset, 4), offset=round(offset, 4), velocity=vel, pitch_bend=bend, features=feats, track=lead.track, instrument=lead.instrument, sources=[g.event_id for g in group], confidence=conf, confidence_method=method, provenance=lead.provenance))
     out.sort(key=lambda n: (n.onset, n.midi_note))
     return out
 
@@ -100,7 +104,7 @@ def fuse_with_fullmix(stem_notes: list[NoteEvent], fullmix_notes: list[NoteEvent
         onset = (sn.onset * wa + fm.onset * wb) / (wa + wb)
         offset = (sn.offset * wa + fm.offset * wb) / (wa + wb)
         conf, method = combine_confidence([sn.confidence, fm.confidence])
-        out.append(NoteEvent(midi_note=sn.midi_note, onset=round(onset, 4), offset=round(offset, 4), velocity=sn.velocity, track=sn.track, instrument=sn.instrument, sources=list(sn.sources or [sn.event_id]) + [fm.event_id], confidence=conf, confidence_method="stem_fullmix_agreement" if conf is not None else method, provenance=sn.provenance))
+        out.append(NoteEvent(midi_note=sn.midi_note, onset=round(onset, 4), offset=round(offset, 4), velocity=sn.velocity, pitch_bend=sn.pitch_bend or fm.pitch_bend, features={**fm.features, **sn.features}, track=sn.track, instrument=sn.instrument, sources=list(sn.sources or [sn.event_id]) + [fm.event_id], confidence=conf, confidence_method="stem_fullmix_agreement" if conf is not None else method, provenance=sn.provenance))
     out.sort(key=lambda n: (n.onset, n.midi_note))
     return out, extras
 
@@ -165,3 +169,41 @@ def drum_leak_filter(notes: list[NoteEvent], drums: list[DrumEvent], max_note_se
                 continue
         kept.append(n)
     return kept, dropped
+
+
+def merge_drum_adapter_runs(runs: list[list[DrumEvent]], tol: float = 0.03, unmatched_weight: float = 0.8) -> list[DrumEvent]:
+    """Consensus between several drum-transcription adapters on the same stem (class + time)."""
+    if not runs:
+        return []
+    if len(runs) == 1:
+        return list(runs[0])
+    pool: list[list[DrumEvent]] = [[e] for e in runs[0]]
+    for other in runs[1:]:
+        used: set[int] = set()
+        for e in other:
+            match = None
+            for gi, group in enumerate(pool):
+                if gi in used:
+                    continue
+                if group[0].drum_class == e.drum_class and abs(group[0].time - e.time) <= tol:
+                    match = gi
+                    break
+            if match is None:
+                pool.append([e])
+            else:
+                pool[match].append(e)
+                used.add(match)
+    out: list[DrumEvent] = []
+    for group in pool:
+        if len(group) == 1:
+            e = group[0]
+            c = e.confidence
+            out.append(DrumEvent(time=e.time, drum_class=e.drum_class, velocity=e.velocity, duration=e.duration, track=e.track, class_scores=e.class_scores, confidence=None if c is None else round(c * unmatched_weight, 4), confidence_method=e.confidence_method if c is None else "single_adapter_scaled", provenance=e.provenance))
+            continue
+        w = [max(0.05, g.confidence if g.confidence is not None else 0.5) for g in group]
+        t = sum(g.time * wi for g, wi in zip(group, w)) / sum(w)
+        conf, method = combine_confidence([g.confidence for g in group])
+        lead = max(group, key=lambda g: g.confidence or 0.0)
+        out.append(DrumEvent(time=round(t, 4), drum_class=lead.drum_class, velocity=max(g.velocity for g in group), duration=lead.duration, track=lead.track, class_scores=lead.class_scores, confidence=conf, confidence_method=method, provenance=lead.provenance))
+    out.sort(key=lambda e: (e.time, e.drum_class))
+    return out

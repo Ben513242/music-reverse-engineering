@@ -69,6 +69,7 @@ class NoteEvent(Event):
     track: str = ""
     instrument: str = ""
     sources: list[str] = field(default_factory=list)  # ids of events merged into this one
+    features: dict[str, Any] = field(default_factory=dict)  # e.g. {"vibrato": {"rate_hz", "depth_cents"}}
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -217,6 +218,8 @@ class ScoreNoteEvent(Event):
     track: str = ""
     instrument: str = ""
     timing_offset_beats: float = 0.0  # raw - quantised (micro timing, for humanisation)
+    articulation: str = "normal"  # normal | staccato | legato
+    duration_ratio: float | None = None  # raw duration / inter-onset interval (humanisation)
 
     def __post_init__(self) -> None:
         super().__post_init__()

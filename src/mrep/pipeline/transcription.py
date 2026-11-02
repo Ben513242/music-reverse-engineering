@@ -32,6 +32,15 @@ def _is_drum_stem(stem: Stem) -> bool:
     return stem.source_hint == "drums" or stem.name.startswith("drums")
 
 
+def _monophonic_candidate(stem: Stem, label, pb_cfg: dict) -> bool:
+    """Pitch-bend tracking only makes sense on (mostly) monophonic material."""
+    roles = set(pb_cfg.get("roles", ["bassline", "lead", "melody"]))
+    families = set(pb_cfg.get("families", ["bass", "vocal"]))
+    if label is None:
+        return stem.source_hint in families
+    return bool(roles & set(label.musical_role)) or label.source_family in families
+
+
 def _pitched_candidates(stems: list[Stem], labels: dict) -> list[Stem]:
     broad_with_children = {s.parent for s in stems if s.parent}
     out = []
@@ -59,29 +68,35 @@ def run(ctx: PipelineContext) -> StageResult:
     raw_dir.mkdir(parents=True, exist_ok=True)
     index: dict[str, list[dict]] = {"drums": [], "notes": [], "fx": []}
 
-    # ---- drums ------------------------------------------------------------------------
+    # ---- drums (one or several adapters = ensemble) -----------------------------------------
     drum_stems = [s for s in stems if _is_drum_stem(s)]
-    if drum_stems:
+    drum_adapter_names = list(cfg.get("drums_adapters") or [cfg.get("drums_adapter", "onset_bands")])
+    drum_adapters: list[DrumTranscriptionAdapter] = []
+    for name in drum_adapter_names:
         try:
-            dadapter: DrumTranscriptionAdapter = ctx.adapter("drum_transcription", cfg.get("drums_adapter", "onset_bands"), cfg)  # type: ignore[assignment]
-            result.adapters.append(dadapter.info())
-            for stem in drum_stems:
-                component = stem.name.split("/")[-1] if "/" in stem.name else None
-                hint = COMPONENT_CLASS.get(component) if component else None
-                if component and component not in COMPONENT_CLASS and component in DRUM_CLASSES:
-                    hint = component
-                try:
-                    audio, sr = load_stem_audio(ctx, stem)
-                    prov = ctx.provenance("transcription", dadapter, f"stem:{stem.name}")
-                    events = dadapter.transcribe_drums(audio, sr, track=stem.name, class_hint=hint, provenance=prov)
-                    path = raw_dir / f"drums__{stem.file_stem}.jsonl"
-                    write_events(path, events)
-                    index["drums"].append({"stem": stem.name, "adapter": dadapter.name, "path": ctx.rel(path), "count": len(events), "class_hint": hint, "level": stem.level, "stem_confidence_method": stem.confidence_method})
-                    log.info("drums %s: %d events", stem.name, len(events))
-                except Exception as exc:  # noqa: BLE001
-                    result.add_error(f"drums:{stem.name}", exc)
+            da = ctx.adapter("drum_transcription", name, cfg)  # type: ignore[assignment]
+            drum_adapters.append(da)
+            result.adapters.append(da.info())
         except AdapterUnavailable as exc:
-            result.add_error("drums:adapter", exc)
+            result.add_error(f"drums:adapter:{name}", exc)
+    for stem in drum_stems:
+        component = stem.name.split("/")[-1] if "/" in stem.name else None
+        hint = COMPONENT_CLASS.get(component) if component else None
+        if component and component not in COMPONENT_CLASS and component in DRUM_CLASSES:
+            hint = component
+        for dadapter in drum_adapters:
+            if hint is None and component is not None and dadapter is not drum_adapters[0]:
+                continue  # unhinted band components only need one pass
+            try:
+                audio, sr = load_stem_audio(ctx, stem)
+                prov = ctx.provenance("transcription", dadapter, f"stem:{stem.name}")
+                events = dadapter.transcribe_drums(audio, sr, track=stem.name, class_hint=hint, provenance=prov)
+                path = raw_dir / f"drums__{stem.file_stem}__{dadapter.name}.jsonl"
+                write_events(path, events)
+                index["drums"].append({"stem": stem.name, "adapter": dadapter.name, "path": ctx.rel(path), "count": len(events), "class_hint": hint, "level": stem.level, "stem_confidence_method": stem.confidence_method})
+                log.info("drums %s/%s: %d events", stem.name, dadapter.name, len(events))
+            except Exception as exc:  # noqa: BLE001
+                result.add_error(f"drums:{stem.name}:{dadapter.name}", exc)
 
     # ---- pitched AMT: path A (per stem) --------------------------------------------------
     adapter_names = list(cfg.get("pitched_adapters") or ["spectral_peaks"])
@@ -93,18 +108,28 @@ def run(ctx: PipelineContext) -> StageResult:
             result.adapters.append(ad.info())
         except AdapterUnavailable as exc:
             result.add_error(f"amt:{name}", exc)
+    pb_cfg = cfg.get("pitch_bend", {}) or {}
     for stem in _pitched_candidates(stems, labels):
         label = labels.get(stem.name)
         instrument = label.display_name if label else stem.source_hint
+        f0_cache: tuple | None = None
         for ad in pitched_adapters:
             try:
                 audio, sr = load_stem_audio(ctx, stem)
                 prov = ctx.provenance("transcription", ad, f"stem:{stem.name}")
                 notes = ad.transcribe(audio, sr, track=stem.name, instrument=instrument, provenance=prov)
+                bends = 0
+                if pb_cfg.get("enabled", True) and notes and _monophonic_candidate(stem, label, pb_cfg):
+                    from mrep.analysis.pitch_bend import estimate_note_bends, f0_track
+                    from mrep.utils.dsp import to_mono
+
+                    if f0_cache is None:
+                        f0_cache = f0_track(to_mono(audio), sr)
+                    bends = estimate_note_bends(notes, f0_cache[0], f0_cache[1], bend_threshold_cents=float(pb_cfg.get("bend_threshold_cents", 15.0)))
                 path = raw_dir / f"notes__{stem.file_stem}__{ad.name}.jsonl"
                 write_events(path, notes)
-                index["notes"].append({"stem": stem.name, "adapter": ad.name, "path": ctx.rel(path), "count": len(notes), "source": "stem", "instrument": instrument})
-                log.info("AMT %s/%s: %d notes", stem.name, ad.name, len(notes))
+                index["notes"].append({"stem": stem.name, "adapter": ad.name, "path": ctx.rel(path), "count": len(notes), "source": "stem", "instrument": instrument, "pitch_bends": bends})
+                log.info("AMT %s/%s: %d notes (%d with pitch bend)", stem.name, ad.name, len(notes), bends)
             except Exception as exc:  # noqa: BLE001
                 result.add_error(f"amt:{stem.name}:{ad.name}", exc)
 

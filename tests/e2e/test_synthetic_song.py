@@ -27,7 +27,8 @@ def test_tempo_key_and_time_signature(project, demo_audio_44k):
     _, truth, _ = demo_audio_44k
     tempo = read_json(project / "06_analysis/tempo.json")
     assert tempo_error(truth["bpm"], tempo["tempo"])["within_4_percent"]
-    assert tempo["time_signature"] == "4/4" and tempo["time_signature_method"] == "assumed"
+    assert tempo["time_signature"] == "4/4" and tempo["time_signature_method"] == "accent_periodicity"
+    assert tempo["time_signature_confidence"] is not None and tempo["time_signature_confidence"] > 0.05
     key = read_json(project / "06_analysis/key.json")
     assert key["global_key"] == truth["key"]
     beat = read_json(project / "06_analysis/beat.json")
@@ -91,3 +92,10 @@ def test_outputs_midi_musicxml_reconstruction(project):
     assert labels["bass"]["source_family"] == "bass" and "bassline" in labels["bass"]["musical_role"]
     assert "sub_bass" in labels["bass"]["frequency_role"]
     assert labels["drums"]["source_family"] == "drums"
+    sd = read_json(project / "06_analysis/sound_design.json")
+    assert "bass" in sd and "other" in sd and sd["bass"]["features"]["attack_ms"] >= 0
+    assert "drums" not in sd
+    human = read_json(project / "05_score/humanization.json")["tracks"]
+    assert human and all(0 <= h["legato_ratio"] <= 1 for h in human.values())
+    amb = read_json(project / "06_analysis/ambiguities.json")
+    assert isinstance(amb["items"], list)

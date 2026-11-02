@@ -17,7 +17,10 @@ Audio → Source Separation → Instrument Recognition → Musical Role Recognit
 | 多標籤樂器 / 音樂角色 / 頻率角色 / 音色分類 | `03_events/labels.json`, `06_analysis/instruments.json` |
 | 鼓組 component 事件（kick / snare / hat …，含 velocity 與 confidence） | `03_events/drums.jsonl` |
 | 音高轉譜（per-stem AMT + full-mix AMT + event fusion） | `03_events/notes.jsonl` |
-| Tempo / beat / downbeat / 拍號 / 調性與轉調 / 段落 / 動態 / 響度 | `06_analysis/*.json` |
+| Tempo / beat / downbeat / 拍號（3/4 vs 4/4 偵測）/ 調性與轉調 / 段落 / 動態 / 響度 | `06_analysis/*.json` |
+| Synth / 音色分析（ADSR、spectral、harmonicity、vibrato / tremolo / filter movement）與 patch 近似候選 | `06_analysis/sound_design.json` |
+| Humanization（micro-timing、velocity、legato / staccato、pitch bend、vibrato） | `05_score/humanization.json`, MIDI pitch wheel, MusicXML articulations |
+| 低信心標記與建議（labels / chords / key / fx / notes / drums） | `06_analysis/ambiguities.json` |
 | 和弦（含 7th / sus / dim / aug / add9 / slash chord）與琶音型態 | `06_analysis/chords.json`, `arpeggios.json` |
 | FX（riser / downlifter / impact / noise …）保存為音訊片段 + trigger MIDI | `07_fx/` |
 | MIDI（保留 micro-timing 的 performance 版 + quantized 版）、MusicXML 樂譜 | `04_midi/`, `05_score/` |
@@ -118,9 +121,20 @@ output/SONG_NAME/
 | transcription | `spectral_peaks` | iterative harmonic-summation 多音高偵測 + note segmentation |
 | mir | `dsp` | autocorrelation tempo、DP beat tracking、KS key finding、novelty 段落、RMS 響度 |
 | fx | `heuristic` | stationary 高頻噪音趨勢 → riser / downlifter / white_noise / impact |
+| sound_analysis | `dsp` | ADSR、spectral、harmonicity、inharmonicity、vibrato / tremolo / filter movement → sound_design 描述與 patch 近似候選 |
 | render | `additive` / `fluidsynth` | 加法合成（預設）/ SoundFont（需自行提供 .sf2，絕不自動下載） |
 
 測試用的 `fake` / `failing` adapters 則用來驗證 pipeline、resume、cache 與 partial failure。
+
+### 選用的神經模型 adapters（需自行安裝依賴）
+
+| kind | name | 需求 | 啟用方式 |
+| --- | --- | --- | --- |
+| separation | `demucs` | `pip install torch demucs`，然後 `mrep models download separation demucs`（下載權重到 torch hub cache） | `--set stages.separation.broad_adapter=demucs` |
+| transcription | `basic_pitch` | `pip install basic-pitch`（模型隨套件附帶） | `--set stages.transcription.pitched_adapters=[spectral_peaks,basic_pitch]` |
+
+這兩個 adapter 以 lazy import 實作，沒裝依賴時 `available()` 為 False，pipeline 會回報 `AdapterUnavailable` 並使用 `fallback_adapter`。
+對應的 integration tests 在依賴缺席時自動略過。
 
 ## 測試
 

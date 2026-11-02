@@ -210,6 +210,8 @@ class SoundLabel:
     confidence_method: str = "unavailable"
     provenance: Provenance | None = None
     features: dict[str, Any] = field(default_factory=dict)
+    ambiguous: bool = False  # set when confidence is below the configured threshold
+    patch_candidates: list[Candidate] = field(default_factory=list)  # synth patch *approximations*
 
     def __post_init__(self) -> None:
         self.confidence = validate_confidence(self.confidence)
@@ -266,6 +268,8 @@ class SoundLabel:
             "confidence_method": self.confidence_method,
             "provenance": self.provenance.to_dict() if self.provenance else None,
             "features": dict(self.features),
+            "ambiguous": bool(self.ambiguous),
+            "patch_candidates": [c.to_dict() for c in self.patch_candidates],
         }
 
     @classmethod
@@ -281,4 +285,6 @@ class SoundLabel:
             confidence_method=str(d.get("confidence_method", "unavailable")),
             provenance=Provenance.from_dict(d.get("provenance")),
             features=dict(d.get("features", {})),
+            ambiguous=bool(d.get("ambiguous", False)),
+            patch_candidates=[Candidate.from_dict(c) for c in d.get("patch_candidates", [])],
         )

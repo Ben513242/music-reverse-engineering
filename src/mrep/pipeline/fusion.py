@@ -10,11 +10,13 @@ from collections import defaultdict
 
 import numpy as np
 
+from mrep.analysis.ambiguity import build_ambiguity_report
 from mrep.analysis.arpeggio import detect_arpeggios
 from mrep.analysis.chords import detect_chords
 from mrep.analysis.fusion_rules import (
     drum_leak_filter,
     fuse_with_fullmix,
+    merge_drum_adapter_runs,
     merge_drum_runs,
     merge_note_runs,
 )
@@ -69,19 +71,25 @@ def run(ctx: PipelineContext) -> StageResult:
     prov = Provenance(stage="fusion", adapter="fusion_rules", model="rule_based", model_version="1.0", run_id=ctx.run_id, input="03_events/raw")
 
     # ---- drums ----------------------------------------------------------------------
-    broad: list[DrumEvent] = []
-    components: list[DrumEvent] = []
+    broad_runs: dict[str, list[list[DrumEvent]]] = defaultdict(list)  # stem -> runs (one per adapter)
+    comp_runs: dict[str, list[list[DrumEvent]]] = defaultdict(list)
     evidence_only = False
     for entry in index.get("drums", []):
         evs = [e for e in read_events(ctx.project.abs(entry["path"])) if isinstance(e, DrumEvent)]
         if entry.get("level") == "specialist" and entry.get("class_hint"):
-            components.extend(evs)
+            comp_runs[entry["stem"]].append(evs)
             if entry.get("stem_confidence_method") == "band_filter_heuristic":
                 evidence_only = True
         elif entry.get("level") == "specialist":
             continue  # unhinted band stems (hats/percussion) are too ambiguous to add events
         else:
-            broad.extend(evs)
+            broad_runs[entry["stem"]].append(evs)
+    broad: list[DrumEvent] = []
+    for runs in broad_runs.values():
+        broad.extend(merge_drum_adapter_runs(runs, tol))
+    components: list[DrumEvent] = []
+    for runs in comp_runs.values():
+        components.extend(merge_drum_adapter_runs(runs, tol))
     drums = merge_drum_runs(broad, components, tol, add_unmatched=not evidence_only)
     for d in drums:
         d.track = "drums"
@@ -163,13 +171,29 @@ def run(ctx: PipelineContext) -> StageResult:
                     label.musical_role.append("arpeggio")
             write_json(ctx.project.analysis_dir / "arpeggios.json", {"arpeggios": arps})
             result.artifacts["arpeggios"] = ctx.rel(ctx.project.analysis_dir / "arpeggios.json")
-            write_json(ctx.project.events_dir / LABELS_FILE, {k: v.to_dict() for k, v in labels.items()})
         except Exception as exc:  # noqa: BLE001
             result.add_error("arpeggio", exc)
 
+    # ---- low-confidence handling --------------------------------------------------------
+    ambiguity: dict = {"count": 0, "items": []}
+    try:
+        key_events = []
+        try:
+            key_events = load_global(ctx)["key"].get("key_events", [])
+        except Exception:  # noqa: BLE001
+            pass
+        ambiguity = build_ambiguity_report(labels, chords, key_events, fx, fused, drums, cfg.get("ambiguity") or None)
+        write_json(ctx.project.analysis_dir / "ambiguities.json", ambiguity)
+        result.artifacts["ambiguities"] = ctx.rel(ctx.project.analysis_dir / "ambiguities.json")
+        if ambiguity["count"]:
+            log.info("%d ambiguous results flagged (see 06_analysis/ambiguities.json)", ambiguity["count"])
+    except Exception as exc:  # noqa: BLE001
+        result.add_error("ambiguity", exc)
+    write_json(ctx.project.events_dir / LABELS_FILE, {k: v.to_dict() for k, v in labels.items()})
+
     write_json(ctx.project.events_dir / "fusion.json", {"notes": stats, "drums": {"broad": len(broad), "components": len(components), "fused": len(drums)}, "fx": len(fx), "chords": len(chords), "arpeggios": len(arps), "settings": cfg})
     result.artifacts.update({"notes": ctx.rel(ctx.project.events_dir / "notes.jsonl"), "drums": ctx.rel(ctx.project.events_dir / "drums.jsonl"), "fx": ctx.rel(ctx.project.events_dir / "fx.jsonl"), "labels": ctx.rel(ctx.project.events_dir / LABELS_FILE), "fusion_stats": ctx.rel(ctx.project.events_dir / "fusion.json")})
-    result.summary = {"notes": len(fused), "drums": len(drums), "fx": len(fx), "chords": len(chords), "arpeggios": len(arps)}
+    result.summary = {"notes": len(fused), "drums": len(drums), "fx": len(fx), "chords": len(chords), "arpeggios": len(arps), "ambiguous": ambiguity.get("count", 0), "notes_with_pitch_bend": sum(1 for n in fused if n.pitch_bend)}
     result.confidence = {"notes_mean": round(float(np.mean([n.confidence for n in fused if n.confidence is not None])), 4) if any(n.confidence is not None for n in fused) else None, "drums_mean": round(float(np.mean([d.confidence for d in drums if d.confidence is not None])), 4) if any(d.confidence is not None for d in drums) else None}
     return result
 
