@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from mrep.domain.events import DrumEvent, FXEvent, NoteEvent
-from mrep.domain.labels import SoundLabel
+from mrep.domain.labels import Candidate, SoundLabel
 from mrep.domain.provenance import Provenance
 
 
@@ -130,6 +130,17 @@ class MIRResult:
 
 
 @dataclass
+class SoundAnalysisResult:
+    """Timbre / sound-design analysis of one stem (ADSR, spectral, modulation, patch approximation)."""
+
+    features: dict[str, Any] = field(default_factory=dict)
+    sound_design: list[str] = field(default_factory=list)
+    patch_candidates: list[Candidate] = field(default_factory=list)
+    confidence: float | None = None
+    confidence_method: str = "unavailable"
+
+
+@dataclass
 class RenderResult:
     mix: np.ndarray
     sample_rate: int
@@ -186,6 +197,13 @@ class FXAdapter(BaseAdapter):
     kind = "fx"
 
     def detect(self, audio: np.ndarray, sr: int, *, provenance: Provenance) -> list[FXEvent]:
+        raise NotImplementedError
+
+
+class SoundAnalysisAdapter(BaseAdapter):
+    kind = "sound_analysis"
+
+    def analyze_sound(self, audio: np.ndarray, sr: int, *, stem_name: str, label: SoundLabel | None, provenance: Provenance) -> SoundAnalysisResult:
         raise NotImplementedError
 
 

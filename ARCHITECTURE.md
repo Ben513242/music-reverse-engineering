@@ -36,12 +36,12 @@ ingest → normalization ─┬→ global_analysis ─────────�
 | --- | --- | --- | --- |
 | ingest | 原始檔 | `manifest.source`（SHA256、duration、sr、channels、project_id） | – |
 | normalization | 原始檔 | `01_normalized/audio.wav`, `analysis_mono.wav`, `normalization.json`（含 gain_db） | – |
-| global_analysis | normalized | `06_analysis/{tempo,beat,key,structure,dynamics,loudness}.json` | `mir` |
+| global_analysis | normalized | `06_analysis/{tempo,beat,key,structure,dynamics,loudness}.json`（tempo.json 含拍號偵測分數） | `mir` |
 | separation | normalized | `02_stems/*.wav`, `02_stems/<source>/<component>.wav`, `stems.json`, `instruments.json`(discovery) | `discovery`, `separation`（broad + specialists） |
-| classification | stems | `03_events/labels.json`（多標籤）, `instruments.json`(labels) | `classification` |
-| transcription | stems, labels | `03_events/raw/*.jsonl`（每個 adapter / stem 一檔）, `07_fx/*.wav` | `drum_transcription`, `transcription`, `fx` |
-| fusion | raw events | `03_events/{notes,drums,fx}.jsonl`, `06_analysis/{chords,arpeggios}.json`, labels 更新（arpeggio role） | –（`analysis/`） |
-| scoring | fused events + global | `04_midi/*.mid`, `04_midi/quantized/`, `05_score/*.musicxml`, `score_events.jsonl`, `07_fx/trigger_map.json` | –（`io/midi`, `io/musicxml`） |
+| classification | stems | `03_events/labels.json`（多標籤 + sound_design + patch_candidates）, `instruments.json`(labels), `06_analysis/sound_design.json` | `classification`, `sound_analysis` |
+| transcription | stems, labels | `03_events/raw/*.jsonl`（每個 adapter / stem 一檔；單音 stem 附 pitch_bend / vibrato）, `07_fx/*.wav` | `drum_transcription`（可多個 = ensemble）, `transcription`（可多個）, `fx` |
+| fusion | raw events | `03_events/{notes,drums,fx}.jsonl`, `06_analysis/{chords,arpeggios,ambiguities}.json`, labels 更新（arpeggio role、ambiguous 旗標） | –（`analysis/`） |
+| scoring | fused events + global | `04_midi/*.mid`（含 pitch wheel）, `04_midi/quantized/`, `05_score/*.musicxml`（staccato / slur）, `score_events.jsonl`（articulation）, `humanization.json`, `07_fx/trigger_map.json` | –（`io/midi`, `io/musicxml`） |
 | reconstruction | fused events + fx clips | `08_reconstruction/reconstructed.{wav,mp3}`, `track_renders/`, `reconstruction.json` | `render` |
 
 ## Runner：resume、cache、partial failure
@@ -69,6 +69,7 @@ class TranscriptionAdapter:    def transcribe(audio, sr, *, track, instrument, p
 class DrumTranscriptionAdapter:def transcribe_drums(audio, sr, *, track, class_hint, provenance) -> list[DrumEvent]
 class MIRAdapter:              def analyze(audio, sr) -> MIRResult
 class FXAdapter:               def detect(audio, sr, *, provenance) -> list[FXEvent]
+class SoundAnalysisAdapter:    def analyze_sound(audio, sr, *, stem_name, label, provenance) -> SoundAnalysisResult
 class RenderAdapter:           def render(*, tracks, sample_rate, duration, fx_clips, tempo_bpm, midi_path) -> RenderResult
 ```
 
@@ -99,6 +100,19 @@ class RenderAdapter:           def render(*, tracks, sample_rate, duration, fx_c
 
 `SoundLabel` 是四個獨立軸的多標籤：`source_family`/`source_subtype`（+ `source_candidates`）、
 `musical_role[]`、`frequency_role[]`、`sound_design[]`。Taxonomy 以常數定義，`validate()` 回報不合法值。
+
+## 分析模組（`src/mrep/analysis/`）
+
+| 模組 | 用途 |
+| --- | --- |
+| `fusion_rules.py` | 多 adapter consensus（notes / drums）、stem + full-mix 融合、component 證據合併、drum leak filter |
+| `chords.py` | template matching（chroma + notes + bass → slash chord / inversion） |
+| `arpeggio.py` | 規律 IOI + 和弦音 → pattern（1-5-3-5）、rhythm |
+| `quantize.py` | grid / triplet / swing 量化，raw 與 score 分離 |
+| `time_signature.py` | beat accent 折疊 + 自相關 → 3/4 vs 4/4 與 downbeat phase |
+| `pitch_bend.py` | YIN 式 f0 tracking → 每個音符的 pitch bend 曲線與 vibrato |
+| `humanization.py` | articulation（legato / staccato）、timing / velocity 統計 |
+| `ambiguity.py` | 低信心結果旗標與建議 |
 
 ## 設定
 

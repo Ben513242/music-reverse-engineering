@@ -8,6 +8,7 @@ import numpy as np
 
 from mrep.adapters.base import MIRAdapter, MIRResult
 from mrep.adapters.registry import register
+from mrep.analysis.time_signature import estimate_time_signature
 from mrep.utils.dsp import (
     EPS,
     choose_downbeat_phase,
@@ -67,7 +68,20 @@ class DSPMIR(MIRAdapter):
                 prev = chroma_db[:, int(beat_frames[i - 1]) : int(bf)].mean(axis=1)
                 nxt = chroma_db[:, int(bf) : int(beat_frames[i + 1])].mean(axis=1)
                 weight[bf] += 1.0 - float(np.dot(prev, nxt) / (np.linalg.norm(prev) * np.linalg.norm(nxt) + EPS))
-        phase = choose_downbeat_phase(beat_frames, weight, bpb) if len(beat_frames) else 0
+        ts_cfg = cfg.get("time_signature", {}) or {}
+        ts_conf: float | None = None
+        ts_method = "assumed"
+        ts_scores: dict[str, float] = {}
+        if str(ts_cfg.get("mode", "auto")) == "auto" and len(beat_frames) >= 8:
+            accents = weight[beat_frames]
+            L, phase, ts_conf, ts_method, ts_scores = estimate_time_signature(accents, tuple(int(c) for c in ts_cfg.get("candidates", [3, 4])))
+            if ts_conf is None:
+                phase = choose_downbeat_phase(beat_frames, weight, bpb)
+            else:
+                bpb = L
+        else:
+            ts_method = "configured" if str(ts_cfg.get("mode", "auto")) != "auto" else "assumed"
+            phase = choose_downbeat_phase(beat_frames, weight, bpb) if len(beat_frames) else 0
         downbeats = beat_times[phase::bpb]
 
         # ---- key ----------------------------------------------------------------------
@@ -173,11 +187,11 @@ class DSPMIR(MIRAdapter):
             downbeat_times=[round(b, 4) for b in downbeats],
             beats_per_bar=bpb,
             time_signature=f"{bpb}/4",
-            time_signature_confidence=None,
-            time_signature_method="assumed",
+            time_signature_confidence=ts_conf,
+            time_signature_method=ts_method,
             key_events=key_events,
             sections=sections,
             loudness=loudness,
             dynamics=dynamics,
-            extra={"key_scores": dict(list(g_scores.items())[:6])},
+            extra={"key_scores": dict(list(g_scores.items())[:6]), "time_signature_scores": ts_scores},
         )

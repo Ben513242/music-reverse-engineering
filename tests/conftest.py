@@ -57,7 +57,8 @@ def fake_config() -> dict:
     st["global_analysis"]["adapter"] = "fake"
     st["separation"].update({"discovery_adapter": "fake", "broad_adapter": "fake", "specialists": {"drums": "fake_components"}, "chunk_seconds": 0})
     st["classification"]["adapter"] = "fake"
-    st["transcription"].update({"drums_adapter": "fake", "pitched_adapters": ["fake"], "full_mix_amt": True})
+    st["classification"]["sound_analysis"]["adapter"] = "fake"
+    st["transcription"].update({"drums_adapters": ["fake"], "pitched_adapters": ["fake"], "full_mix_amt": True})
     st["transcription"]["fx"]["adapter"] = "fake"
     st["reconstruction"].update({"adapter": "fake", "mp3": False})
     return cfg

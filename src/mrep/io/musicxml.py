@@ -68,6 +68,8 @@ class XmlNote:
     midi: int | None = None  # None for unpitched
     velocity: int = 64
     drum_class: str | None = None
+    articulation: str = "normal"  # normal | staccato | legato
+    slur: str | None = None  # start | stop
 
 
 @dataclass
@@ -220,12 +222,23 @@ class MusicXMLWriter:
                     nh = part.drum_notation.get(n.drum_class or "", {}).get("notehead", "normal")
                     if nh != "normal":
                         _sub(note_el, "notehead", nh)
-                if (p_tie_start or p_tie_stop) and not part.is_drum:
+                lead = group[0]
+                want_stacc = (not part.is_drum) and ni == 0 and pi == 0 and lead.articulation == "staccato"
+                want_slur_start = (not part.is_drum) and ni == 0 and pi == 0 and lead.slur == "start" and not tie_stop
+                want_slur_stop = (not part.is_drum) and ni == 0 and pi == len(pieces) - 1 and lead.slur == "stop" and not tie_start
+                if ((p_tie_start or p_tie_stop) and not part.is_drum) or want_stacc or want_slur_start or want_slur_stop:
                     notations = _sub(note_el, "notations")
-                    if p_tie_stop:
+                    if p_tie_stop and not part.is_drum:
                         _sub(notations, "tied", type="stop")
-                    if p_tie_start:
+                    if p_tie_start and not part.is_drum:
                         _sub(notations, "tied", type="start")
+                    if want_slur_stop:
+                        _sub(notations, "slur", type="stop", number="1")
+                    if want_slur_start:
+                        _sub(notations, "slur", type="start", number="1")
+                    if want_stacc:
+                        arts = _sub(notations, "articulations")
+                        _sub(arts, "staccato")
 
     def _rest_elements(self, parent: ET.Element, duration: int, voice: int, whole_measure: bool = False) -> None:
         if whole_measure:
@@ -407,4 +420,6 @@ def read_musicxml_summary(path: Path) -> dict:
         "rests": sum(1 for p in parts for n in p.iter("note") if n.find("rest") is not None),
         "harmonies": sum(1 for p in parts for _ in p.iter("harmony")),
         "ties": sum(1 for p in parts for _ in p.iter("tie")),
+        "staccatos": sum(1 for p in parts for _ in p.iter("staccato")),
+        "slurs": sum(1 for p in parts for _ in p.iter("slur")),
     }

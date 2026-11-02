@@ -64,6 +64,7 @@ class MidiNote:
     beat_off: float
     note: int
     velocity: int
+    bends: list[tuple[float, float]] = field(default_factory=list)  # (absolute beat, semitones)
 
 
 @dataclass
@@ -82,6 +83,7 @@ def build_midi(
     time_signature: tuple[int, int] = (4, 4),
     key_signature: str | None = None,
     title: str = "MREP",
+    pitch_bend_range: float = 2.0,
 ) -> MidiFile:
     mf = MidiFile(ticks_per_beat=ticks_per_beat)
     conductor = MidiTrack()
@@ -107,23 +109,33 @@ def build_midi(
         track.append(MetaMessage("track_name", name=spec.name, time=0))
         if not spec.is_drum and spec.program is not None:
             track.append(Message("program_change", program=int(spec.program) % 128, channel=channel, time=0))
-        events: list[tuple[int, int, int, int]] = []  # (tick, order, note, velocity) order: off=0 before on=1
+        # (tick, order, kind, a, b); order: note_off=0 < bend reset=1 < bend=2 < note_on=3
+        events: list[tuple[int, int, str, int, int]] = []
         for n in spec.notes:
             on = int(round(max(n.beat_on, 0.0) * ticks_per_beat))
             off = int(round(max(n.beat_off, 0.0) * ticks_per_beat))
             if off <= on:
                 off = on + max(1, ticks_per_beat // 8)
-            events.append((on, 1, int(n.note), int(max(1, min(127, n.velocity)))))
-            events.append((off, 0, int(n.note), 0))
-        events.sort()
+            events.append((on, 3, "on", int(n.note), int(max(1, min(127, n.velocity)))))
+            events.append((off, 0, "off", int(n.note), 0))
+            if n.bends and not spec.is_drum:
+                for beat, semis in n.bends:
+                    tick = int(round(max(beat, 0.0) * ticks_per_beat))
+                    if on <= tick <= off:
+                        value = int(round(max(-1.0, min(1.0, semis / pitch_bend_range)) * 8191))
+                        events.append((tick, 2, "bend", value, 0))
+                events.append((off, 1, "bend", 0, 0))
+        events.sort(key=lambda e: (e[0], e[1]))
         last = 0
-        for tick, kind, note, vel in events:
+        for tick, _order, kind, a, b in events:
             delta = tick - last
             last = tick
-            if kind == 1:
-                track.append(Message("note_on", note=note, velocity=vel, channel=channel, time=delta))
+            if kind == "on":
+                track.append(Message("note_on", note=a, velocity=b, channel=channel, time=delta))
+            elif kind == "off":
+                track.append(Message("note_off", note=a, velocity=0, channel=channel, time=delta))
             else:
-                track.append(Message("note_off", note=note, velocity=0, channel=channel, time=delta))
+                track.append(Message("pitchwheel", pitch=a, channel=channel, time=delta))
         track.append(MetaMessage("end_of_track", time=0))
     return mf
 
@@ -135,7 +147,7 @@ def write_midi(path, mf: MidiFile) -> None:
     mf.save(str(path))
 
 
-def read_midi_notes(path) -> list[dict]:
+def read_midi_notes(path, include_bends: bool = False) -> list[dict]:
     """Return notes as dicts with absolute seconds (for tests / verification)."""
     mf = MidiFile(str(path))
     notes: list[dict] = []
@@ -143,6 +155,9 @@ def read_midi_notes(path) -> list[dict]:
     t = 0.0
     for msg in mf:  # mido converts delta ticks to seconds honouring tempo changes
         t += msg.time
+        if include_bends and msg.type == "pitchwheel":
+            notes.append({"pitchwheel": msg.pitch, "channel": msg.channel, "time": t})
+            continue
         if msg.type == "note_on" and msg.velocity > 0:
             open_notes[(msg.channel, msg.note)] = (t, msg.velocity)
         elif msg.type in ("note_off", "note_on"):

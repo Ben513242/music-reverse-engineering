@@ -21,6 +21,8 @@ from mrep.adapters.base import (  # noqa: F401
     RenderResult,
     SeparationAdapter,
     SeparationResult,
+    SoundAnalysisAdapter,
+    SoundAnalysisResult,
     TranscriptionAdapter,
 )
 from mrep.adapters.registry import (  # noqa: F401
