@@ -101,6 +101,7 @@ class ScoreSpec:
     parts: list[XmlPart] = field(default_factory=list)
     harmonies: list[XmlHarmony] = field(default_factory=list)
     dynamics: list[tuple[int, str]] = field(default_factory=list)  # (start_div, mark)
+    tempo_changes: list[tuple[int, float]] = field(default_factory=list)  # (measure, bpm) after measure 1
     software: str = "MREP"
 
     @property
@@ -332,13 +333,14 @@ class MusicXMLWriter:
                         else:
                             _sub(clef, "sign", "G")
                             _sub(clef, "line", "2")
-                if m == 1 and pi == 0:
+                tempo_here = spec.bpm if m == 1 else next((b for mm, b in spec.tempo_changes if mm == m), None)
+                if pi == 0 and tempo_here is not None:
                     d = _sub(measure, "direction", placement="above")
                     dt = _sub(d, "direction-type")
                     met = _sub(dt, "metronome")
                     _sub(met, "beat-unit", "quarter")
-                    _sub(met, "per-minute", f"{spec.bpm:.0f}")
-                    _sub(d, "sound", tempo=f"{spec.bpm:.2f}")
+                    _sub(met, "per-minute", f"{tempo_here:.0f}")
+                    _sub(d, "sound", tempo=f"{tempo_here:.2f}")
                 for start, mark in dynamics_by_measure.get(m, []):
                     d = _sub(measure, "direction", placement="below")
                     dt = _sub(d, "direction-type")
@@ -422,4 +424,5 @@ def read_musicxml_summary(path: Path) -> dict:
         "ties": sum(1 for p in parts for _ in p.iter("tie")),
         "staccatos": sum(1 for p in parts for _ in p.iter("staccato")),
         "slurs": sum(1 for p in parts for _ in p.iter("slur")),
+        "tempo_marks": sum(1 for p in parts for _ in p.iter("metronome")),
     }

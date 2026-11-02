@@ -70,6 +70,8 @@ def test_full_pipeline_with_fake_adapters(demo_wav, fake_config, tmp_path):
         "07_fx/trigger_map.json",
         "08_reconstruction/reconstructed.wav",
         "08_reconstruction/reconstruction.json",
+        "08_reconstruction/daw/session.json",
+        "08_reconstruction/daw/demo_song.rpp",
     ):
         assert (root / rel).exists(), rel
     # manifest content
@@ -95,6 +97,11 @@ def test_full_pipeline_with_fake_adapters(demo_wav, fake_config, tmp_path):
     assert "bass" in sd and sd["bass"]["patch_candidates"][0]["label"] == "digital_pluck" and "drums" not in sd
     amb = read_json(root / "06_analysis/ambiguities.json")
     assert "items" in amb and amb["thresholds"]["label"] == 0.5
+    session = read_json(root / "08_reconstruction/daw/session.json")
+    assert session["format"] == "mrep-session/1" and len(session["audio_tracks"]) >= 4 and session["midi_files"]
+    assert (root / "08_reconstruction/daw" / session["audio_tracks"][0]["file"]).resolve().exists()
+    rpp = (root / "08_reconstruction/daw/demo_song.rpp").read_text()
+    assert rpp.count("<TRACK") == len(session["audio_tracks"]) and "MARKER" in rpp
     assert read_json(root / "06_analysis/tempo.json")["time_signature_method"] in ("fake_constant", "assumed", "accent_periodicity", "configured")
     # FX kept as clips, mapped to trigger notes, never notated as pitched notes
     trig = read_json(root / "07_fx/trigger_map.json")

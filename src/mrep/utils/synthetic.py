@@ -135,17 +135,20 @@ def place(buffer: np.ndarray, clip: np.ndarray, start_sec: float, sr: int, gain:
     buffer[start:end, 1] += seg * np.sin(theta)
 
 
-def demo_song(sr: int = 44100, bpm: float = 120.0, bars: int = 8, seed: int = 0, lead_in: float = 0.25) -> tuple[np.ndarray, dict[str, Any]]:
+def demo_song(sr: int = 44100, bpm: float = 120.0, bars: int = 8, seed: int = 0, lead_in: float = 0.25, return_stems: bool = False):
     """Render a small electronic loop with drums, sub bass, chords, arpeggio and a riser.
 
     Returns the stereo audio (n, 2) and a ground-truth dictionary (seconds). ``lead_in``
-    seconds of silence precede the first downbeat (like a real recording).
+    seconds of silence precede the first downbeat (like a real recording). With
+    ``return_stems=True`` a third value holds the reference stems (drums / bass / other / fx)
+    that sum exactly to the mix, for separation metrics.
     """
     beat = 60.0 / bpm
     bar = 4 * beat
     total = lead_in + bars * bar + 1.0
     n = int(total * sr)
-    mix = np.zeros((n, 2), dtype=np.float32)
+    stems = {name: np.zeros((n, 2), dtype=np.float32) for name in ("drums", "bass", "other", "fx")}
+    mix = stems["drums"]  # drum hits are placed here first; other sources below
     truth: dict[str, Any] = {
         "bpm": bpm,
         "time_signature": "4/4",
@@ -171,30 +174,30 @@ def demo_song(sr: int = 44100, bpm: float = 120.0, bars: int = 8, seed: int = 0,
         for i in range(4):
             t = t0 + i * beat
             if i in (0, 2):
-                place(mix, k, t, sr)
+                place(stems["drums"], k, t, sr)
                 truth["drums"].append({"time": t, "class": "kick"})
             else:
-                place(mix, s, t, sr, gain=0.8)
+                place(stems["drums"], s, t, sr, gain=0.8)
                 truth["drums"].append({"time": t, "class": "snare"})
             for half in (0.0, 0.5):
                 th = t + half * beat
                 if i == 3 and half == 0.5:
-                    place(mix, oh, th, sr, gain=0.5)
+                    place(stems["drums"], oh, th, sr, gain=0.5)
                     truth["drums"].append({"time": th, "class": "open_hat"})
                 else:
-                    place(mix, ch, th, sr, gain=0.45)
+                    place(stems["drums"], ch, th, sr, gain=0.45)
                     truth["drums"].append({"time": th, "class": "closed_hat"})
         # bass -------------------------------------------------------------------
         bass_midi = root_midi - 12
         for i in (0, 2):
             t = t0 + i * beat
-            place(mix, sub_bass(bass_midi, 1.6 * beat, sr, amp=0.55), t, sr)
+            place(stems["bass"], sub_bass(bass_midi, 1.6 * beat, sr, amp=0.55), t, sr)
             truth["notes"].append(
                 {"midi_note": bass_midi, "pitch": midi_to_name(bass_midi), "onset": t, "offset": t + 1.6 * beat, "track": "bass"}
             )
         # chords (pad) -----------------------------------------------------------
         pad = chord(triad, bar * 0.98, sr, amp=0.22, attack=0.12, decay=0.2, sustain=0.8, release=0.2)
-        place(mix, pad, t0, sr, pan=-0.3)
+        place(stems["other"], pad, t0, sr, pan=-0.3)
         for m in triad:
             truth["notes"].append({"midi_note": m, "pitch": midi_to_name(m), "onset": t0, "offset": t0 + bar * 0.98, "track": "chords"})
         truth["chords"].append({"start": t0, "end": t0 + bar, "root": root, "quality": quality})
@@ -202,15 +205,23 @@ def demo_song(sr: int = 44100, bpm: float = 120.0, bars: int = 8, seed: int = 0,
         pattern = [triad[0] + 12, triad[2] + 12, triad[1] + 12, triad[2] + 12] * 2
         for i, m in enumerate(pattern):
             t = t0 + i * beat / 2
-            place(mix, tone(m, beat * 0.45, sr, amp=0.25, attack=0.005, decay=0.08, sustain=0.5, release=0.03), t, sr, pan=0.4)
+            place(stems["other"], tone(m, beat * 0.45, sr, amp=0.25, attack=0.005, decay=0.08, sustain=0.5, release=0.03), t, sr, pan=0.4)
             truth["notes"].append({"midi_note": m, "pitch": midi_to_name(m), "onset": t, "offset": t + beat * 0.45, "track": "arp"})
     # riser into the last bar -----------------------------------------------------
     if bars >= 2:
         r_dur = min(2.0, bar)
         r_start = lead_in + (bars - 1) * bar - r_dur
-        place(mix, riser(sr, r_dur, amp=0.35), r_start, sr)
+        place(stems["fx"], riser(sr, r_dur, amp=0.35), r_start, sr)
         truth["fx"].append({"class": "riser", "start": r_start, "end": r_start + r_dur})
+    mix = sum(stems.values())
     peak = float(np.max(np.abs(mix))) or 1.0
-    mix *= 0.9 / peak
+    gain = 0.9 / peak
+    mix = (mix * gain).astype(np.float32)
+    for name in stems:
+        stems[name] = (stems[name] * gain).astype(np.float32)
     truth["duration"] = total
+    truth["beats"] = [round(lead_in + i * beat, 6) for i in range(bars * 4)]
+    truth["downbeats"] = [round(lead_in + b * bar, 6) for b in range(bars)]
+    if return_stems:
+        return mix, truth, stems
     return mix, truth

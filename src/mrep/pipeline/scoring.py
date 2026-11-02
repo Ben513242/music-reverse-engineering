@@ -174,6 +174,13 @@ def run(ctx: PipelineContext) -> StageResult:
             if s.get("dynamic"):
                 beat = tempo_map.beats_at(float(s["start"]))
                 dynamics.append((int(round(beat) * DIVISIONS), s["dynamic"]))
+        tempo_changes: list[tuple[int, float]] = []
+        last_bpm = bpm
+        for ev in tempo_info.get("tempo_events", [])[1:]:
+            measure = int(tempo_map.beats_at(float(ev["time"])) // bpb) + 1
+            if measure > 1 and abs(float(ev["bpm"]) - last_bpm) >= float(cfg.get("tempo_change_min_bpm", 3.0)):
+                tempo_changes.append((measure, float(ev["bpm"])))
+                last_bpm = float(ev["bpm"])
         parts: list[XmlPart] = []
         pid = 1
         for stem in by_track:
@@ -192,7 +199,7 @@ def run(ctx: PipelineContext) -> StageResult:
             part = XmlPart(part_id=f"P{pid}", name=names[stem], program=program_for(labels.get(stem), programs), notes=[XmlNote(start=int(round(s.beat_onset * DIVISIONS)), duration=max(2, int(round(s.beat_duration * DIVISIONS))), midi=s.midi_note, velocity=s.velocity, articulation=s.articulation, slur=slurs.get(s.event_id)) for s in sn])
             parts.append(part)
             pid += 1
-            spec = ScoreSpec(title=f"{ctx.project.song_name} - {names[stem]}", beats=bpb, beat_type=4, bpm=bpm, key_changes=key_changes, parts=[part], harmonies=harmonies, dynamics=dynamics)
+            spec = ScoreSpec(title=f"{ctx.project.song_name} - {names[stem]}", beats=bpb, beat_type=4, bpm=bpm, key_changes=key_changes, parts=[part], harmonies=harmonies, dynamics=dynamics, tempo_changes=tempo_changes)
             write_musicxml(score_dir / f"{names[stem]}.musicxml", spec)
             result.artifacts[f"musicxml:{names[stem]}"] = ctx.rel(score_dir / f"{names[stem]}.musicxml")
         if score_drums:
@@ -200,7 +207,7 @@ def run(ctx: PipelineContext) -> StageResult:
             parts.append(dpart)
             write_musicxml(score_dir / "Drums.musicxml", ScoreSpec(title=f"{ctx.project.song_name} - Drums", beats=bpb, bpm=bpm, key_changes=key_changes, parts=[dpart], dynamics=dynamics))
             result.artifacts["musicxml:Drums"] = ctx.rel(score_dir / "Drums.musicxml")
-        write_musicxml(score_dir / "Full_Score.musicxml", ScoreSpec(title=ctx.project.song_name, beats=bpb, bpm=bpm, key_changes=key_changes, parts=parts, harmonies=harmonies, dynamics=dynamics))
+        write_musicxml(score_dir / "Full_Score.musicxml", ScoreSpec(title=ctx.project.song_name, beats=bpb, bpm=bpm, key_changes=key_changes, parts=parts, harmonies=harmonies, dynamics=dynamics, tempo_changes=tempo_changes))
         result.artifacts["musicxml:Full_Score"] = ctx.rel(score_dir / "Full_Score.musicxml")
     (score_dir / "README.txt").write_text(SCORE_README, encoding="utf-8")
     result.summary = {"tracks": list(names.values()), "score_notes": len(score_notes), "score_drums": len(score_drums), "fx_triggers": len(trigger_map), "grid": settings.grid, "triplets": settings.triplets, "swing": settings.swing, "humanization": {t: {"legato_ratio": h["legato_ratio"], "staccato_ratio": h["staccato_ratio"], "timing_std_ms": h["timing_offset_std_ms"]} for t, h in human.items()}}

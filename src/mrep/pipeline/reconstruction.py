@@ -3,6 +3,7 @@ SoundFont renderer) and place original FX clips. Every track's source is recorde
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 
 import numpy as np
@@ -10,7 +11,8 @@ import numpy as np
 from mrep.adapters.base import AdapterUnavailable, RenderAdapter
 from mrep.domain.tracks import Track, track_display_name
 from mrep.io.audio import encode_mp3, ffmpeg_available, read_audio, write_audio
-from mrep.io.json import write_json
+from mrep.io.daw import write_reaper_rpp, write_session_json
+from mrep.io.json import read_jsonl, write_json
 from mrep.pipeline.classification import load_labels
 from mrep.pipeline.fusion import load_fused
 from mrep.pipeline.global_analysis import load_global
@@ -28,6 +30,13 @@ def run(ctx: PipelineContext) -> StageResult:
     sr = int(ctx.config.get("audio", {}).get("target_sample_rate", 44100))
     duration = float(ctx.manifest.source.get("duration") or (max([n.offset for n in notes] + [d.time for d in drums] + [f.end for f in fx] + [1.0])))
 
+    # articulation decided by the scoring stage (humanisation) -> drives release / overlap in rendering
+    score_path = ctx.project.score_dir / "score_events.jsonl"
+    if score_path.exists():
+        art = {s["raw_event_id"]: s.get("articulation", "normal") for s in read_jsonl(score_path)}
+        for n in notes:
+            if n.event_id in art:
+                n.features["articulation"] = art[n.event_id]
     by_track: dict[str, list] = defaultdict(list)
     for n in notes:
         by_track[n.track].append(n)
@@ -96,6 +105,47 @@ def run(ctx: PipelineContext) -> StageResult:
     }
     write_json(out_dir / "reconstruction.json", meta)
     result.artifacts["reconstruction_meta"] = ctx.rel(out_dir / "reconstruction.json")
+
+    # ---- DAW export -------------------------------------------------------------------
+    dcfg = cfg.get("daw_export", {}) or {}
+    if dcfg.get("enabled", True):
+        try:
+            daw_dir = out_dir / "daw"
+            daw_dir.mkdir(parents=True, exist_ok=True)
+            from mrep.pipeline.separation import load_stems
+
+            stems = [st for st in load_stems(ctx) if st.is_leaf or st.level == "broad"]
+            audio_tracks = []
+            for st in stems:
+                rel = os.path.relpath(ctx.project.abs(st.path), daw_dir)
+                audio_tracks.append({"name": track_display_name(st.name, labels.get(st.name)) if "/" not in st.name else st.name.replace("/", " / "), "file": rel.replace(os.sep, "/"), "volume": 1.0, "mute": False, "stem": st.name})
+            audio_tracks.append({"name": "MREP reconstruction", "file": os.path.relpath(wav, daw_dir).replace(os.sep, "/"), "volume": 1.0, "mute": True, "stem": "reconstruction"})
+            markers = [(float(sec["start"]), f"{sec['label']} ({sec.get('dynamic') or ''})".replace(" ()", "")) for sec in glob["structure"].get("sections", [])]
+            tempo_changes = [(float(e["time"]), float(e["bpm"])) for e in glob["tempo"].get("tempo_events", [])]
+            bpb = int(glob["tempo"].get("beats_per_bar", 4))
+            rpp = write_reaper_rpp(daw_dir / f"{ctx.project.song_name}.rpp", bpm=bpm, time_signature=(bpb, 4), duration=duration, audio_tracks=audio_tracks, markers=markers, tempo_changes=tempo_changes if len(tempo_changes) > 1 else None, title=ctx.project.song_name)
+            midi_files = sorted(p.name for p in ctx.project.midi_dir.glob("*.mid"))
+            session = {
+                "format": "mrep-session/1",
+                "song": ctx.project.song_name,
+                "sample_rate": rres.sample_rate,
+                "duration": duration,
+                "tempo_bpm": bpm,
+                "tempo_events": glob["tempo"].get("tempo_events", []),
+                "time_signature": glob["tempo"].get("time_signature"),
+                "key_events": [{k: v for k, v in e.items() if k in ("start", "end", "key", "tonic", "mode", "confidence")} for e in __import__("mrep.io.json", fromlist=["read_json"]).read_json(ctx.project.analysis_dir / "key.json").get("key_events", [])] if (ctx.project.analysis_dir / "key.json").exists() else [],
+                "markers": [{"time": t, "name": n} for t, n in markers],
+                "audio_tracks": audio_tracks,
+                "midi_files": [os.path.relpath(ctx.project.midi_dir / f, daw_dir).replace(os.sep, "/") for f in midi_files],
+                "fx_clips": [{"class": ev.fx_class, "file": os.path.relpath(ctx.project.abs(ev.clip_path), daw_dir).replace(os.sep, "/"), "start": ev.start, "end": ev.end, "trigger_note": ev.trigger_note} for ev in fx if ev.clip_path],
+                "labels": {k: {"source_family": v.source_family, "musical_role": v.musical_role} for k, v in labels.items()},
+            }
+            write_session_json(daw_dir / "session.json", session)
+            result.artifacts["daw_reaper"] = ctx.rel(rpp)
+            result.artifacts["daw_session"] = ctx.rel(daw_dir / "session.json")
+            log.info("DAW export: %d audio tracks, %d markers", len(audio_tracks), len(markers))
+        except Exception as exc:  # noqa: BLE001
+            result.add_error("daw_export", exc)
     result.summary = {"tracks": len(tracks), "fx_clips": len(fx_clips), "mp3": mp3_status, "adapter": adapter.name}
     log.info("rendered %d tracks + %d fx clips with %s", len(tracks), len(fx_clips), adapter.name)
     return result

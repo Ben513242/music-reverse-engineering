@@ -42,7 +42,7 @@ ingest → normalization ─┬→ global_analysis ─────────�
 | transcription | stems, labels | `03_events/raw/*.jsonl`（每個 adapter / stem 一檔；單音 stem 附 pitch_bend / vibrato）, `07_fx/*.wav` | `drum_transcription`（可多個 = ensemble）, `transcription`（可多個）, `fx` |
 | fusion | raw events | `03_events/{notes,drums,fx}.jsonl`, `06_analysis/{chords,arpeggios,ambiguities}.json`, labels 更新（arpeggio role、ambiguous 旗標） | –（`analysis/`） |
 | scoring | fused events + global | `04_midi/*.mid`（含 pitch wheel）, `04_midi/quantized/`, `05_score/*.musicxml`（staccato / slur）, `score_events.jsonl`（articulation）, `humanization.json`, `07_fx/trigger_map.json` | –（`io/midi`, `io/musicxml`） |
-| reconstruction | fused events + fx clips | `08_reconstruction/reconstructed.{wav,mp3}`, `track_renders/`, `reconstruction.json` | `render` |
+| reconstruction | fused events + fx clips + score articulation | `08_reconstruction/reconstructed.{wav,mp3}`, `track_renders/`, `reconstruction.json`, `daw/session.json`, `daw/<song>.rpp` | `render` |
 
 ## Runner：resume、cache、partial failure
 
@@ -109,10 +109,18 @@ class RenderAdapter:           def render(*, tracks, sample_rate, duration, fx_c
 | `chords.py` | template matching（chroma + notes + bass → slash chord / inversion） |
 | `arpeggio.py` | 規律 IOI + 和弦音 → pattern（1-5-3-5）、rhythm |
 | `quantize.py` | grid / triplet / swing 量化，raw 與 score 分離 |
-| `time_signature.py` | beat accent 折疊 + 自相關 → 3/4 vs 4/4 與 downbeat phase |
+| `time_signature.py` | beat accent 折疊 + 自相關（sub-period 懲罰）→ 3/4 / 4/4 / 6/8 與 downbeat phase |
+| `key_segments.py` | 視窗 KS 分數 → Viterbi 路徑（switch penalty）→ 調性分段 |
 | `pitch_bend.py` | YIN 式 f0 tracking → 每個音符的 pitch bend 曲線與 vibrato |
 | `humanization.py` | articulation（legato / staccato）、timing / velocity 統計 |
 | `ambiguity.py` | 低信心結果旗標與建議 |
+
+## 評估（`src/mrep/evaluate.py`）
+
+`mrep evaluate <project> --truth truth.json [--stems dir]` 比對 ground truth：tempo error、beat / downbeat F1、
+拍號與調性是否正確、note onset+pitch P/R/F1（含每個 truth track）、drum onset F1 與 confusion、FX overlap
+F1、chord frame accuracy，以及有參考 stems 時的 SDR / SI-SDR / leakage。`mrep synth --stems` 產生可用的
+合成 ground truth。
 
 ## 設定
 

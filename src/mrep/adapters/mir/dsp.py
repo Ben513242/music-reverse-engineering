@@ -5,10 +5,12 @@ from __future__ import annotations
 import string
 
 import numpy as np
+from scipy.ndimage import median_filter
 
 from mrep.adapters.base import MIRAdapter, MIRResult
 from mrep.adapters.registry import register
-from mrep.analysis.time_signature import estimate_time_signature
+from mrep.analysis.key_segments import segments_from_path, viterbi_key_path
+from mrep.analysis.time_signature import estimate_time_signature, metre_name
 from mrep.utils.dsp import (
     EPS,
     choose_downbeat_phase,
@@ -60,14 +62,21 @@ class DSPMIR(MIRAdapter):
         bpb = int(cfg.get("beats", {}).get("beats_per_bar", 4))
         low_env = onset_strength(S[freqs < 150.0]) if T > 1 else env
         chroma_db = chroma_from_stft(np.sqrt(S), freqs, fmin=30.0)
+        chroma_bass = chroma_from_stft(np.sqrt(S), freqs, fmin=30.0, fmax=200.0)  # bass-note changes mark bars
         weight = np.zeros(T)
+
+        def _change(c: np.ndarray, a: int, b: int, c2: int) -> float:
+            prev = c[:, a:b].mean(axis=1)
+            nxt = c[:, b:c2].mean(axis=1)
+            return 1.0 - float(np.dot(prev, nxt) / (np.linalg.norm(prev) * np.linalg.norm(nxt) + EPS))
+
+        ctx_beats = 2  # compare the two beats before with the two beats after: bar-level changes stand out
         for i, bf in enumerate(beat_frames):
             lo_i, hi_i = max(0, int(bf) - 2), min(T, int(bf) + 3)
             weight[bf] = float(low_env[lo_i:hi_i].max() + 0.5 * env[lo_i:hi_i].max())
-            if 0 < i < len(beat_frames) - 1:  # harmonic change across the beat (chords change on downbeats)
-                prev = chroma_db[:, int(beat_frames[i - 1]) : int(bf)].mean(axis=1)
-                nxt = chroma_db[:, int(bf) : int(beat_frames[i + 1])].mean(axis=1)
-                weight[bf] += 1.0 - float(np.dot(prev, nxt) / (np.linalg.norm(prev) * np.linalg.norm(nxt) + EPS))
+            if ctx_beats <= i < len(beat_frames) - ctx_beats:  # harmonic / bass-note change (chords change on downbeats)
+                a, b, c2 = int(beat_frames[i - ctx_beats]), int(bf), int(beat_frames[i + ctx_beats])
+                weight[bf] += _change(chroma_db, a, b, c2) + 1.5 * _change(chroma_bass, a, b, c2)
         ts_cfg = cfg.get("time_signature", {}) or {}
         ts_conf: float | None = None
         ts_method = "assumed"
@@ -92,41 +101,45 @@ class DSPMIR(MIRAdapter):
         g_tonic, g_mode, g_conf, g_scores = estimate_key(weighted)
         seg_s = float(kcfg.get("segment_seconds", 20.0))
         hop_s = float(kcfg.get("hop_seconds", 10.0))
-        min_change = float(kcfg.get("min_change_confidence", 0.15))
-        windows: list[tuple[float, float, int, str, float]] = []
+        switch_penalty = float(kcfg.get("switch_penalty", 0.25))
+        window_scores: list[dict[str, float]] = []
+        window_conf: list[float] = []
+        bounds: list[tuple[float, float]] = []
         t = 0.0
         while t < duration:
             a, b = int(t * fps), int(min(duration, t + seg_s) * fps)
             if b - a > 2:
                 act = active[a:b]
                 cw = chroma[:, a:b][:, act].mean(axis=1) if act.any() else chroma[:, a:b].mean(axis=1)
-                tonic, mode, conf, scores = estimate_key(cw)
-                windows.append((t, min(duration, t + seg_s), tonic, mode, conf, scores))
+                _tonic, _mode, conf, scores = estimate_key(cw)
+                window_scores.append(scores)
+                window_conf.append(conf)
+                # windows overlap: a window "owns" the span from its start to the next start
+                bounds.append((t, min(duration, t + hop_s)))
             t += hop_s
-        key_events: list[dict] = []
-        cur = (g_tonic, g_mode)
-        cur_start = 0.0
-        cur_conf = [g_conf]
-        from mrep.utils.music import key_fifths
+        if bounds:
+            bounds[-1] = (bounds[-1][0], duration)
+        if window_scores:
+            path = viterbi_key_path(window_scores, switch_penalty=switch_penalty)
+            key_events = [
+                {"start": seg["start"], "end": seg["end"], "tonic": seg["tonic"], "mode": seg["mode"], "confidence": seg["confidence"], "confidence_method": "ks_correlation_margin_viterbi"}
+                for seg in segments_from_path(path, bounds, window_conf)
+            ]
+        else:
+            key_events = [{"start": 0.0, "end": duration, "tonic": pitch_class_name(g_tonic), "mode": g_mode, "confidence": g_conf, "confidence_method": "ks_correlation_margin"}]
 
-        for ws, _we, tonic, mode, conf, scores in windows:
-            if (tonic, mode) != cur and conf >= min_change:
-                # relative major/minor share a key signature: require a clear preference
-                if key_fifths(tonic, mode) == key_fifths(cur[0], cur[1]):
-                    cur_name = pitch_class_name(cur[0]) + " " + cur[1]
-                    new_name = pitch_class_name(tonic) + " " + mode
-                    if scores.get(new_name, 0.0) - scores.get(cur_name, 0.0) < 0.1:
-                        cur_conf.append(conf)
-                        continue
-                # accept a key change only if the next window agrees (or it is the last one)
-                nxt = [w for w in windows if w[0] > ws]
-                if not nxt or (nxt[0][2], nxt[0][3]) == (tonic, mode):
-                    key_events.append({"start": cur_start, "end": ws, "tonic": pitch_class_name(cur[0]), "mode": cur[1], "confidence": float(np.mean(cur_conf)), "confidence_method": "ks_correlation_margin"})
-                    cur, cur_start, cur_conf = (tonic, mode), ws, [conf]
-                    continue
-            if (tonic, mode) == cur:
-                cur_conf.append(conf)
-        key_events.append({"start": cur_start, "end": duration, "tonic": pitch_class_name(cur[0]), "mode": cur[1], "confidence": float(np.mean(cur_conf)), "confidence_method": "ks_correlation_margin"})
+        # ---- tempo curve (variable tempo) -------------------------------------------------------
+        tempo_curve: list[dict] = []
+        tempo_stability = None
+        if len(beat_times) >= 9:
+            local = 60.0 / np.maximum(np.diff(np.asarray(beat_times)), 1e-3)
+            smooth = median_filter(local, size=8, mode="nearest")
+            tempo_stability = round(float(np.std(smooth) / (np.mean(smooth) + EPS)), 4)
+            last = None
+            for i, b in enumerate(smooth):
+                if last is None or abs(b - last) >= float(tcfg.get("curve_min_change_bpm", 2.0)):
+                    tempo_curve.append({"time": round(float(beat_times[i]), 4), "bpm": round(float(b), 2)})
+                    last = b
 
         # ---- sections -----------------------------------------------------------------
         scfg = cfg.get("sections", {})
@@ -186,12 +199,12 @@ class DSPMIR(MIRAdapter):
             beat_times=[round(b, 4) for b in beat_times],
             downbeat_times=[round(b, 4) for b in downbeats],
             beats_per_bar=bpb,
-            time_signature=f"{bpb}/4",
+            time_signature=metre_name(bpb) if ts_method == "accent_periodicity" else f"{bpb}/4",
             time_signature_confidence=ts_conf,
             time_signature_method=ts_method,
             key_events=key_events,
             sections=sections,
             loudness=loudness,
             dynamics=dynamics,
-            extra={"key_scores": dict(list(g_scores.items())[:6]), "time_signature_scores": ts_scores},
+            extra={"key_scores": dict(list(g_scores.items())[:6]), "time_signature_scores": ts_scores, "tempo_curve": tempo_curve, "tempo_stability": tempo_stability, "beat_accents": [round(float(v), 4) for v in weight[beat_frames]] if len(beat_frames) else []},
         )
