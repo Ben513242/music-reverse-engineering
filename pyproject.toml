@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mrep"
+version = "0.1.0"
+description = "MREP - Music Reverse Engineering Pipeline: audio -> stems -> events -> MIDI/score -> reconstruction"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "MREP contributors" }]
+keywords = ["music", "mir", "source-separation", "transcription", "midi", "musicxml"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Sound/Audio :: Analysis",
+  "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "soundfile>=0.12",
+  "PyYAML>=6.0",
+  "mido>=1.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.4"]
+# Heavy ML adapters are installed explicitly, never implicitly:
+#   pip install "mrep[torch]" then run `mrep models download <adapter>`
+torch = ["torch>=2.1"]
+
+[project.scripts]
+mrep = "mrep.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Ben513242/music-reverse-engineering"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mrep"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config" = "mrep/resources/config"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/mrep", "config", "tests", "README.md", "ARCHITECTURE.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "integration: tests that load real models or external binaries",
+  "slow: tests that take a long time",
+  "e2e: end-to-end tests on synthetic audio",
+]
+addopts = "-m 'not integration and not slow' -q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B905"]

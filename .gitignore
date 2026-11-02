@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# MREP outputs (keep the folder, ignore the content)
+output/*
+!output/.gitkeep
+
+# Models are downloaded explicitly and never committed
+models/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.sf2
+
+# Audio fixtures must be synthetic and tiny; never commit commercial songs
+*.mp3
+*.flac
+*.m4a
+*.aac
+*.ogg
+*.aiff
+*.wav
+!tests/fixtures/**/*.wav
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

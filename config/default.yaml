@@ -1,0 +1,120 @@
+# MREP default configuration.
+# Profiles (light / standard / max_quality) are deep-merged on top of this file.
+# Any key can also be overridden on the CLI with:  --set stages.transcription.polyphony=6
+profile: default
+device: auto              # auto | cpu | cuda | mps  (resolved at run time; CPU is always a valid fallback)
+output_root: output
+seed: 0
+
+audio:
+  target_sample_rate: 44100
+  channels: 2
+  dtype: float32
+  peak_normalize_dbfs: -1.0
+  write_analysis_mono: true
+
+logging:
+  level: INFO
+  json_file: true          # write output/<song>/logs/mrep.log.jsonl
+
+models:
+  cache_dir: ~/.cache/mrep/models
+  auto_download: false     # importing or running NEVER downloads implicitly. Use `mrep models download <adapter>`.
+
+stages:
+  ingest:
+    enabled: true
+
+  normalization:
+    enabled: true
+
+  global_analysis:
+    enabled: true
+    adapter: dsp
+    fallback_adapter: null
+    tempo:
+      min_bpm: 60
+      max_bpm: 200
+      prior_bpm: 120
+    beats:
+      beats_per_bar: 4
+    key:
+      segment_seconds: 20.0
+      hop_seconds: 10.0
+      min_change_confidence: 0.15
+    sections:
+      min_section_seconds: 8.0
+      kernel_beats: 8
+
+  separation:
+    enabled: true
+    discovery_adapter: energy_heuristic
+    broad_adapter: hpss
+    fallback_adapter: null
+    chunk_seconds: 0             # 0 = process the whole file at once
+    chunk_overlap_seconds: 2.0
+    specialist_threshold: 0.6    # run a specialist only when discovery probability >= threshold
+    force_specialists: []        # always run these specialists regardless of discovery
+    specialists:                 # source -> adapter name (registered under kind "separation")
+      drums: drum_bandsplit
+    write_stems: true
+
+  classification:
+    enabled: true
+    adapter: heuristic
+
+  transcription:
+    enabled: true
+    drums_adapter: onset_bands
+    pitched_adapters: [spectral_peaks]   # several adapters = ensemble, fused by consensus
+    full_mix_amt: false                  # Path B: multi-instrument AMT on the original mix
+    polyphony: 4
+    min_note_seconds: 0.06
+    midi_range: [28, 96]
+    salience_threshold: 0.08
+    fx:
+      enabled: true
+      adapter: heuristic
+      min_seconds: 0.8
+
+  fusion:
+    enabled: true
+    onset_tolerance_seconds: 0.05
+    pitch_tolerance_semitones: 0
+    fullmix_only_weight: 0.5     # confidence multiplier for notes seen only by the full-mix AMT
+    min_confidence: 0.2          # fused notes below this confidence are dropped (raw files keep them)
+    drum_leak_filter:            # drop very short pitched notes that coincide with kick/snare hits
+      enabled: true
+      max_note_seconds: 0.15
+      tolerance_seconds: 0.03
+    chords:
+      enabled: true
+      qualities: [major, minor, dom7, maj7, min7, sus2, sus4, dim, aug, add9]
+      min_confidence: 0.3
+    arpeggio:
+      enabled: true
+      min_notes: 4
+      ioi_cv_max: 0.3
+
+  scoring:
+    enabled: true
+    quantize:
+      grid: "1/16"
+      triplets: true
+      swing: 0.0
+    midi:
+      ticks_per_beat: 480
+      drum_map: drum_map.yaml
+      programs: gm_programs.yaml
+      write_quantized: true
+      fx_trigger_base_note: 24   # C1
+    musicxml:
+      enabled: true
+
+  reconstruction:
+    enabled: true
+    adapter: additive
+    fallback_adapter: additive
+    soundfont: null              # path to .sf2 for the fluidsynth adapter
+    mp3: auto                    # auto | true | false  (auto = only if ffmpeg is on PATH)
+    track_renders: true

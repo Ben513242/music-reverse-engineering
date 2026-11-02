@@ -1,0 +1,39 @@
+# General MIDI percussion mapping (MIDI channel 10). Config-driven: edit here, never hard-code.
+midi:
+  kick: 36
+  snare: 38
+  rimshot: 37
+  clap: 39
+  closed_hat: 42
+  pedal_hat: 44
+  open_hat: 46
+  low_tom: 45
+  mid_tom: 47
+  high_tom: 50
+  crash: 49
+  ride: 51
+  tambourine: 54
+  cowbell: 56
+  conga: 63
+  shaker: 70
+  other_percussion: 75
+
+# Percussion-staff notation (MusicXML display-step / display-octave / notehead)
+notation:
+  kick:        { step: F, octave: 4, notehead: normal }
+  snare:       { step: C, octave: 5, notehead: normal }
+  rimshot:     { step: C, octave: 5, notehead: x }
+  clap:        { step: E, octave: 5, notehead: triangle }
+  closed_hat:  { step: G, octave: 5, notehead: x }
+  pedal_hat:   { step: D, octave: 4, notehead: x }
+  open_hat:    { step: G, octave: 5, notehead: circle-x }
+  low_tom:     { step: A, octave: 4, notehead: normal }
+  mid_tom:     { step: D, octave: 5, notehead: normal }
+  high_tom:    { step: E, octave: 5, notehead: normal }
+  crash:       { step: A, octave: 5, notehead: x }
+  ride:        { step: F, octave: 5, notehead: x }
+  tambourine:  { step: B, octave: 5, notehead: diamond }
+  cowbell:     { step: E, octave: 5, notehead: triangle }
+  conga:       { step: B, octave: 4, notehead: normal }
+  shaker:      { step: B, octave: 5, notehead: x }
+  other_percussion: { step: B, octave: 5, notehead: diamond }
