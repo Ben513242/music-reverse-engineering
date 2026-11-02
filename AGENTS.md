@@ -10,7 +10,7 @@
 
 1. 讀 `docs/SPEC.md`（需求）與 `ARCHITECTURE.md`（實作結構）。
 2. 安裝：`pip install -e ".[dev]"`；跑 `pytest -q` 確認綠燈再動手。
-3. 看 `TASKS.md` 與 `ROADMAP.md` 了解目前里程碑。
+3. 看 `TASKS.md` 與 `ROADMAP.md` 了解目前里程碑；要接模型整合請讀 `docs/HANDOVER.md`。
 
 ## 硬性規範（違反即不合格）
 

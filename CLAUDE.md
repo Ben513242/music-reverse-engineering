@@ -2,6 +2,7 @@
 
 本 repo 是 **MREP — Music Reverse Engineering Pipeline**（Python，`src/mrep`）。
 規格：`docs/SPEC.md`。架構：`ARCHITECTURE.md`。給 agent 的規範：`AGENTS.md`（必讀，含 15 條硬性規範）。
+接手模型整合（需 GPU / torch）：`docs/HANDOVER.md`。
 
 ## 常用指令
 

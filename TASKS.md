@@ -40,6 +40,8 @@
 
 ## Next（需要實體機 / 模型）
 
+> 交接指南：`docs/HANDOVER.md`（環境建置、工作順序、每項的驗收標準、baseline 參考數字）。
+
 - [ ] 在有 GPU / torch 的環境實測 `demucs` 與 `basic_pitch` adapters（本次開發環境無法安裝 torch）
 - [ ] 鼓轉譜模型 adapter（`drum_transcription/`）
 - [ ] 學習型多標籤 classification adapter
