@@ -28,7 +28,8 @@ Audio → Source Separation → Instrument Recognition → Musical Role Recognit
 | MIDI（保留 micro-timing 的 performance 版 + quantized 版）、MusicXML 樂譜 | `04_midi/`, `05_score/` |
 | 重新演奏（MIDI → 合成 / SoundFont，FX 以原始片段回填） | `08_reconstruction/` |
 
-> 設計規格請見 [`docs/SPEC.md`](docs/SPEC.md)；架構說明請見 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+> 設計規格請見 [`docs/SPEC.md`](docs/SPEC.md)；架構說明請見 [`ARCHITECTURE.md`](ARCHITECTURE.md)；
+> 要在有 GPU 的機器接手模型整合，請讀 [`docs/HANDOVER.md`](docs/HANDOVER.md)。
 
 ## 安裝
 

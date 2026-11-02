@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Docs
+- `docs/HANDOVER.md`: handover guide for the next (GPU / torch) coding agent — environment setup, work order,
+  acceptance criteria per task, baseline numbers, pitfalls, PR checklist.
+
 ### Added (round 3)
 - Viterbi key segmentation (switch penalty, relative keys cost more) replaces the rule-based key-change logic.
 - 6/8 metre candidate with sub-period penalties; `metre_name()`.
