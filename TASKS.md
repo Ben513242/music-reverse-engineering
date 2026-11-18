@@ -38,6 +38,20 @@
 - [x] `.ogg / .m4a / .flac` 輸入測試（ffmpeg 編碼後走 libsndfile 或 ffmpeg fallback）、48 kHz 輸入重採樣測試
 - [x] DAW export：`08_reconstruction/daw/session.json`（DAW 無關的 session 描述）+ Reaper `.rpp`（stem 音軌、markers、tempo envelope）
 
+## 技術稽核待辦（2026-11-18；尚未修復）
+
+依據 [`docs/TECHNICAL_AUDIT_2026-11-18.md`](docs/TECHNICAL_AUDIT_2026-11-18.md)。以下僅記錄已識別問題，不代表本次文件 PR 有修正執行程式：
+
+- [ ] **A01 P1**：修正量化版 full-song MIDI 所有 pitched tracks 共用 channel 0；新增多樂器 round-trip 測試。
+- [ ] **A02 P1**：修正 6/8 拍號寫入 MIDI 時分母變成 4；新增 MIDI meta event／MusicXML 驗證。
+- [ ] **A03 P1**：定義並實作 full-mix AMT 在 `pitched_adapters[]` 多模型時的預期行為，驗證 fusion。
+- [ ] **A04 P1**：逐軌 evaluate 缺少對應估計軌時不可用全部估計事件替代；獨立報告聲部歸屬品質。
+- [ ] **A05 P1**：鼓組評估明確區分 onset-only、class-aware per-class／macro F1。
+- [ ] **A06 P2**：評估 noisy-OR 融合信心在相關模型下的校準偏差，新增 reliability 測試。
+- [ ] **A07 P1**：實測 Demucs 指定模型的權重辨識、離線推論與 fallback（不能只檢查任意 `*.th`）。
+- [ ] **A08 P0**：在 GPU 環境實測 Demucs／Basic Pitch 並建立同一資料集 DSP baseline 對照，標示 integration skip 不等於通過。
+- [ ] **QG-3～5**：建立合法標註資料集、真實混音驗證、人工修正／重建 A/B 測試；未來 Minecraft exporter 另案評估。
+
 ## Next（需要實體機 / 模型）
 
 > 交接指南：`docs/HANDOVER.md`（環境建置、工作順序、每項的驗收標準、baseline 參考數字）。
