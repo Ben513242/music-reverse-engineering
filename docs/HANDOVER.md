@@ -8,8 +8,10 @@
 
 ## 0. 一句話現況
 
-**架構與所有 model-free 的功能已完成並通過 CI；剩下的工作全部是「把真正的 AI 模型接成 adapter 並實測」。**
-目前 `main` 上的 pipeline 以 numpy/scipy baseline adapters 端到端可跑，68 個測試綠燈。
+**架構與 model-free 的核心流程已建立並通過既有 CI；但除了實測 AI Adapter，還有輸出正確性與評估指標的問題待修正。**
+本文件記載的基準狀態為：`main` 以 numpy/scipy baseline adapters 端到端可跑，68 個測試綠燈（主要為合成音訊及軟體流程測試；不能視為真實歌曲品質驗證）。
+
+> **2026-11-18 靜態稽核增補：** 請先讀 [`TECHNICAL_AUDIT_2026-11-18.md`](TECHNICAL_AUDIT_2026-11-18.md)，其中列有量化版多軌 MIDI channel、6/8 拍號、full-mix AMT、逐軌評估、鼓類別與 Demucs 權重檢查等待辦。這些都**尚未在本文件 PR 中修正**。
 
 ---
 
