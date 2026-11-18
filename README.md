@@ -31,6 +31,12 @@ Audio → Source Separation → Instrument Recognition → Musical Role Recognit
 > 設計規格請見 [`docs/SPEC.md`](docs/SPEC.md)；架構說明請見 [`ARCHITECTURE.md`](ARCHITECTURE.md)；
 > 要在有 GPU 的機器接手模型整合，請讀 [`docs/HANDOVER.md`](docs/HANDOVER.md)。
 
+## 能力界線與技術審查（2026-11-18）
+
+目前的端到端流程以 **DSP baseline adapters** 為主；CI 通過證明軟體流程與合成音訊測試可運作，**不等於已能準確解構任何真實混音**。Demucs／Basic Pitch Adapter 目前仍待實機模型驗證；音符、樂器與合成器參數可能存在無法唯一還原的歧義。
+
+請參閱 [`docs/TECHNICAL_AUDIT_2026-11-18.md`](docs/TECHNICAL_AUDIT_2026-11-18.md) 的能力矩陣、原始碼問題、客觀品質指標與驗收計畫；對應工作已列入 [`TASKS.md`](TASKS.md)。**這是文件審查，尚未修復程式問題。**
+
 ## 安裝
 
 ```bash

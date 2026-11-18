@@ -10,6 +10,10 @@
 | **M5 — Two-path AMT** | Per-stem AMT + Full-mix AMT → fusion；多 adapter ensemble consensus | ✅ 機制完成（`full_mix_amt`, `pitched_adapters[]`, `drums_adapters[]`）；`basic_pitch` adapter 骨架已加，待實測 |
 | **M6 — Reconstruction 品質** | Velocity / dynamics / humanization / articulation / instrument mapping / FX / mixing | 🟡 velocity、micro-timing、articulation、pitch bend / vibrato 已套用到 additive 渲染；FX 回填；DAW export（session.json + Reaper）；SoundFont adapter 需自備 .sf2 |
 
+## 品質閘門（2026-11-18 稽核新增）
+
+現有 M0／M1／M4／M5 的完成標示表示**機制或 baseline 流程已實作**，不是現實混音的精度保證。執行下列功能路線前，應先完成 [`docs/TECHNICAL_AUDIT_2026-11-18.md`](docs/TECHNICAL_AUDIT_2026-11-18.md) 的 A01–A05 正確性回歸測試、A07／A08 真模型實測，以及可重現基準資料集；目前均列為**待驗收**。參見 [`TASKS.md`](TASKS.md)。
+
 ## 近期優先（建議順序）
 
 1. **實測 `basic_pitch` adapter**（已寫好骨架）並在 `standard` / `max_quality` 與 `spectral_peaks` 並列，由 fusion 做 consensus。

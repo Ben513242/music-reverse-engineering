@@ -40,6 +40,16 @@
 6. 加 `tests/unit`（結果 schema）與 `@pytest.mark.integration` 測試（真的載模型）。
 7. 不要修改 pipeline / domain 來遷就模型；需要新欄位時先改 domain 並補測試。
 
+## 技術稽核與驗收（2026-11-18）
+
+開始修復或整合新模型前，先讀 [`docs/TECHNICAL_AUDIT_2026-11-18.md`](docs/TECHNICAL_AUDIT_2026-11-18.md)，與 [`TASKS.md`](TASKS.md) 的稽核清單。本節是**額外驗收指引**，不表示問題已修復：
+
+- 先補回歸測試：量化版多軌 MIDI 的 channel／program 互不干擾；6/8 在 MIDI 與 MusicXML 一致；full-mix AMT 的多 Adapter 設定語意明確。
+- 評估應將整體音高辨識與「正確樂器／軌道歸屬」分開，缺失軌不可自動用全部預測音符冒充；鼓組同時報 class-agnostic onset 與 class-aware F1。
+- `confidence` 預設視為未校準分數；不可在沒有校準與標註評估的情況下當成真實機率。
+- 任何宣稱 ML 已啟用、已改善品質，必須提供真正執行的 integration／benchmark、依賴版本、模型識別及基準對照。**被 skip 的 integration test 不算通過。**
+- MREP 的音訊→MIDI 辨識誤差必須與未來 Minecraft／其他演奏器的時序與音域映射誤差分開報告；匯出器只應是可選擇模組。
+
 ## 工作習慣
 
 * 小步提交，每個 PR 附測試；`ruff check src tests` 與 `pytest -q` 必須通過。
